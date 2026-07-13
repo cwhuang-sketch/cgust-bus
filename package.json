@@ -1,0 +1,11 @@
+{
+  "name": "cgust-bus",
+  "version": "1.0.0",
+  "description": "長庚科技大學校車查詢系統",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
