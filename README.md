@@ -13,7 +13,7 @@ cgust-bus/
 ├── public/
 │   ├── index.html        # 查詢介面（前台）
 │   ├── admin-cgu2024.html # 管理後台
-│   └── logo.png          # 學校 LOGO
+│   └── logo.png          # 學校 LOGO 
 ├── .gitignore
 ├── package.json
 ├── vercel.json
