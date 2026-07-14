@@ -8,11 +8,12 @@ export default async function handler(req, res) {
   // ── CORS：只允許同網域或指定來源 ──────────────────────────
   const allowed = [
     process.env.ALLOWED_ORIGIN,       // 環境變數設定（例如學校網域）
-    'https://cgust-bus.vercel.app',   // Vercel 部署網址
+    'https://cgustbus.vercel.app',
+    'https://cgustbus-ilj49maz6-cgust.vercel.app',
   ].filter(Boolean);
 
   const origin = req.headers.origin || '';
-  const originOk = allowed.length === 0 || allowed.some(o => origin === o);
+  const originOk = !origin || allowed.some(o => origin === o);
   if (!originOk) {
     return res.status(403).json({ error: 'Origin not allowed' });
   }

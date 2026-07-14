@@ -6,11 +6,13 @@ export default async function handler(req, res) {
   // ── CORS ──────────────────────────────────────────────────
   const allowed = [
     process.env.ALLOWED_ORIGIN,
-    'https://cgust-bus.vercel.app',
+    'https://cgustbus.vercel.app',
+    'https://cgustbus-ilj49maz6-cgust.vercel.app',
   ].filter(Boolean);
 
   const origin = req.headers.origin || '';
-  const originOk = allowed.length === 0 || allowed.some(o => origin === o);
+  // 無 Origin（直接瀏覽器/伺服器呼叫）→ 允許；有 Origin → 需在清單內
+  const originOk = !origin || allowed.some(o => origin === o);
   if (!originOk) return res.status(403).json({ error: 'Origin not allowed' });
   res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
