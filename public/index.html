@@ -409,9 +409,9 @@ const L={cur:'zh'};
 const MAX=10;
 
 const TDX_CONFIG={
-  CLIENT_ID:'',
-  CLIENT_SECRET:'',
-  ENABLED:true
+  CLIENT_ID:'YOUR_CLIENT_ID',
+  CLIENT_SECRET:'YOUR_CLIENT_SECRET',
+  ENABLED:false
 };
 
 const STOP_MAP={
@@ -543,44 +543,77 @@ function getMockBusTripsForRoute(fromId,toId,dowVal,afterMin){
   }).sort((a,b)=>toMin(a.depTime)-toMin(b.depTime));
 }
 
+// 將 TDX 到站資料轉換為系統格式
+// 支援兩種格式：EstimateTime（秒）和 NextBusTime（絕對時間）
+function parseTDXArrival(a){
+  // StopStatus: 0=正常, 1=尚未發車, 2=不發車, 3=停駛
+  if(a.StopStatus===2||a.StopStatus===3) return null; // 停駛/不發車
+  let estSeconds = null;
+  let arrivalTime = null;
+  const now = Date.now();
+  if(a.EstimateTime!=null&&a.EstimateTime>=0){
+    // 新北市格式：EstimateTime 為秒數
+    estSeconds = a.EstimateTime;
+    const t = new Date(now+estSeconds*1000);
+    arrivalTime = String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+  } else if(a.NextBusTime){
+    // 桃園市格式：NextBusTime 為 ISO 時間字串
+    const t = new Date(a.NextBusTime);
+    if(isNaN(t.getTime())) return null;
+    estSeconds = Math.round((t.getTime()-now)/1000);
+    if(estSeconds<-60) return null; // 已過站超過1分鐘，忽略
+    arrivalTime = String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+  } else {
+    return null; // 無時間資料
+  }
+  return {estSeconds, arrivalTime};
+}
+
 async function getBusTripsForStop(sid){
   try {
     if(!TDX_CONFIG.ENABLED) return getMockBusTripsForStop(sid);
-    // TDX 模式：透過後端 Proxy 查詢（金鑰不暴露前端）
     const tdxName = Object.entries(STOP_MAP).find(([k,v])=>v===sid)?.[0];
-    if(!tdxName) return getMockBusTripsForStop(sid); // 無對應站牌名稱，退回 mock
+    if(!tdxName) return getMockBusTripsForStop(sid);
     const relevantRoutes = BUS_ROUTES.filter(r=>r.directions.some(d=>d.stops.includes(sid)));
     if(!relevantRoutes.length) return [];
-    const city = relevantRoutes[0].tdxCity;
-    const res = await fetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`);
-    if(!res.ok){ console.error('TDX proxy error:', res.status); return getMockBusTripsForStop(sid); }
-    const json = await res.json();
-    const arrivals = json.data || [];
+
+    // 同一站可能跨兩個縣市（例如候車亭有桃園和新北的公車）
+    const cities = [...new Set(relevantRoutes.map(r=>r.tdxCity))];
+    const allArrivals = [];
+    for(const city of cities){
+      const res = await fetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`);
+      if(!res.ok){ console.error('TDX proxy error:', res.status, city); continue; }
+      const json = await res.json();
+      allArrivals.push(...(json.data||[]));
+    }
+
     const results = [];
-    arrivals.forEach(a=>{
-      const route = BUS_ROUTES.find(r=>r.tdxRouteName===a.RouteName?.Zh_tw||r.routeNo===a.RouteName?.Zh_tw);
+    allArrivals.forEach(a=>{
+      // 比對路線名稱（TDX 的 RouteName.Zh_tw）
+      const routeNameTdx = a.RouteName?.Zh_tw||'';
+      const route = BUS_ROUTES.find(r=>r.routeNo===routeNameTdx||r.tdxRouteName===routeNameTdx);
       if(!route) return;
       const dirIdx = a.Direction??0;
       const dir = route.directions[dirIdx];
       if(!dir||!dir.stops.includes(sid)) return;
-      const estSec = a.EstimatedTime;
-      if(estSec==null||estSec<0) return;
-      const arrTime = new Date(Date.now()+estSec*1000);
-      const hh = String(arrTime.getHours()).padStart(2,'0');
-      const mm = String(arrTime.getMinutes()).padStart(2,'0');
-      results.push({routeNo:route.routeNo, route, dir, dirIdx,
-        stopId:sid, arrivalTime:`${hh}:${mm}`, isLive:true, estSeconds:estSec});
+      const parsed = parseTDXArrival(a);
+      if(!parsed) return;
+      results.push({
+        routeNo:route.routeNo, route, dir, dirIdx,
+        stopId:sid, arrivalTime:parsed.arrivalTime,
+        isLive:true, estSeconds:parsed.estSeconds,
+        plateNo:a.PlateNumb||''
+      });
     });
     return results.sort((a,b)=>a.estSeconds-b.estSeconds);
   } catch(e) {
     console.error('getBusTripsForStop error:', e);
-    return getMockBusTripsForStop(sid); // 發生錯誤時退回 mock
+    return getMockBusTripsForStop(sid);
   }
 }
 async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
   try {
     if(!TDX_CONFIG.ENABLED) return getMockBusTripsForRoute(fromId,toId,dowVal,afterMin);
-    // TDX 模式：查詢兩端站牌到站時間配對
     const results = [];
     for(const route of BUS_ROUTES){
       for(let di=0;di<route.directions.length;di++){
@@ -593,17 +626,16 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
         const res = await fetch(`/api/tdx-bus?city=${encodeURIComponent(route.tdxCity)}&stop=${encodeURIComponent(fromTdxName)}`);
         if(!res.ok) continue;
         const json = await res.json();
-        const arrivals = json.data || [];
+        const arrivals = json.data||[];
         arrivals
-          .filter(a=>(a.RouteName?.Zh_tw===route.tdxRouteName||a.RouteUID?.includes(route.routeNo))&&(a.Direction===di))
+          .filter(a=>(a.RouteName?.Zh_tw===route.routeNo||a.RouteName?.Zh_tw===route.tdxRouteName)&&a.Direction===di)
           .forEach(a=>{
-            if(a.EstimatedTime==null||a.EstimatedTime<0) return;
-            const depTotalMin = Math.floor(Date.now()/60000) + Math.round(a.EstimatedTime/60);
-            if(depTotalMin < afterMin) return;
-            const hh = String(Math.floor(depTotalMin/60)%24).padStart(2,'0');
-            const mm = String(depTotalMin%60).padStart(2,'0');
+            const parsed = parseTDXArrival(a);
+            if(!parsed) return;
+            const depMin = Math.floor(Date.now()/60000)+Math.round(parsed.estSeconds/60);
+            if(depMin<afterMin) return;
             results.push({routeNo:route.routeNo, route, dir,
-              depTime:`${hh}:${mm}`, isLive:true, estSeconds:a.EstimatedTime,
+              depTime:parsed.arrivalTime, isLive:true, estSeconds:parsed.estSeconds,
               stops:dir.stops.map(id=>({id})), fi, ti});
           });
       }
