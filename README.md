@@ -13,7 +13,7 @@ cgust-bus/
 ├── public/
 │   ├── index.html        # 查詢介面（前台）
 │   ├── admin-cgu2024.html # 管理後台
-│   └── logo.png          # 學校 LOGO 
+│   └── logo.png          # 學校 LOGO
 ├── .gitignore
 ├── package.json
 ├── vercel.json
@@ -110,7 +110,7 @@ https://cgust-bus.vercel.app/admin-cgu2024.html
 
 ## 預設管理員帳號
 - 帳號：`admin`
-- 密碼：`cgu2024`
+- 密碼：`cgust2026`
 - **請在首次登入後立即至「變更密碼」修改！**
 
 ---
