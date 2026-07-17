@@ -9,10 +9,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Barlow:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --orange:#E8650A;
-  --orange-dark:#C4520A;
-  --orange-light:#FDF0E8;
-  --orange-mid:#F28240;
+  --orange:#C4520A;
+  --orange-dark:#A33F08;
+  --orange-light:#FCEEE8;
+  --orange-mid:#D96518;
   --green:#2D6A1F;
   --green-light:#EBF4E8;
   --white:#FFFFFF;
@@ -160,11 +160,11 @@ header::before{
 }
 .simple-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .stop-chip{
-  padding:.95rem .8rem;
+  padding:1rem .8rem;
   border-radius:var(--rs);
   border:2px solid var(--border);
   background:white;cursor:pointer;text-align:center;
-  font-size:.92rem;font-weight:600;
+  font-size:1rem;font-weight:600;
   transition:all .18s;line-height:1.35;
   font-family:'Noto Sans TC',sans-serif;
   color:var(--ink);
@@ -256,12 +256,12 @@ select:focus,input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(23
 .rh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.45rem;gap:8px;}
 .rn{font-weight:700;font-size:.98rem;line-height:1.3;font-family:'Barlow',sans-serif;letter-spacing:.01em;}
 
-.badge{font-size:.68rem;padding:3px 9px;border-radius:20px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Barlow',sans-serif;letter-spacing:.04em;}
+.badge{font-size:.78rem;padding:5px 11px;border-radius:20px;font-weight:700;white-space:nowrap;flex-shrink:0;font-family:'Barlow',sans-serif;letter-spacing:.04em;}
 .bs{background:var(--orange-light);color:var(--orange);}
 .bb{background:var(--green-light);color:var(--green);}
 
 .td{
-  font-size:1.45rem;font-weight:800;
+  font-size:1.55rem;font-weight:800;
   color:var(--orange);
   margin-bottom:.4rem;
   font-family:'Barlow',sans-serif;letter-spacing:.02em;
@@ -274,14 +274,14 @@ select:focus,input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(23
 .stops-row{
   display:flex;align-items:center;
   gap:4px;flex-wrap:wrap;
-  font-size:.78rem;color:var(--ink-light);
+  font-size:.85rem;color:var(--ink-light);
 }
 .sl2{color:var(--ink-mid);}
 .sh{color:var(--ink);font-weight:600;}
 .arr{color:var(--border);margin:0 1px;font-size:.85rem;}
 
 .dur{
-  font-size:.74rem;color:var(--ink-light);
+  font-size:.82rem;color:var(--ink-light);
   margin-top:6px;
   font-family:'Barlow',sans-serif;letter-spacing:.02em;
 }
@@ -324,7 +324,7 @@ select:focus,input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(23
 footer{
   background:white;border-top:1.5px solid var(--border);
   text-align:center;padding:1rem 1.25rem;
-  font-size:.73rem;color:var(--ink-light);
+  font-size:.85rem;color:var(--ink-light);
 }
 
 /* Animation */
@@ -343,7 +343,7 @@ footer{
   <div class="header-inner">
     <div class="logo-area">
       <div class="logo-icon">
-        <img src="logo.png" alt="長庚科技大學標誌" onerror="this.parentElement.innerHTML='🚌'">
+        <img src="logo.png" alt="長庚科技大學" onerror="this.parentElement.innerHTML='🚌'">
       </div>
       <div class="logo-text">
         <h1 id="ht">長庚科技大學校車查詢</h1>
@@ -356,9 +356,9 @@ footer{
 </header>
 
 <nav role="navigation" aria-label="查詢模式">
-  <div class="mode-bar">
-    <button class="mode-tab active" id="ts" onclick="switchMode('simple')" aria-selected="true" role="tab"><span id="ls">簡易</span></button>
-    <button class="mode-tab" id="tstd" onclick="switchMode('standard')" aria-selected="false" role="tab"><span id="lstd">標準</span></button>
+  <div class="mode-bar" role="tablist" aria-label="查詢模式 Query Mode">
+    <button class="mode-tab active" id="ts" onclick="switchMode('simple')" aria-selected="true" role="tab" aria-controls="ms"><span id="ls">簡易</span></button>
+    <button class="mode-tab" id="tstd" onclick="switchMode('standard')" aria-selected="false" role="tab" aria-controls="mstd"><span id="lstd">標準</span></button>
   </div>
 </nav>
 
@@ -369,7 +369,7 @@ footer{
   <div id="ms" role="tabpanel" aria-labelledby="ts">
     <div class="card">
       <p class="chips-label" id="lps">選擇站點</p>
-      <div class="simple-grid" role="group" aria-label="站點選擇" id="chips"></div>
+      <div class="simple-grid" role="radiogroup" aria-label="站點選擇 Select stop" id="chips"></div>
     </div>
     <div id="sr2" aria-live="polite" aria-atomic="true"></div>
   </div>
@@ -409,9 +409,9 @@ const L={cur:'zh'};
 const MAX=10;
 
 const TDX_CONFIG={
-  CLIENT_ID:'',
-  CLIENT_SECRET:'',
-  ENABLED:true
+  CLIENT_ID:'YOUR_CLIENT_ID',
+  CLIENT_SECRET:'YOUR_CLIENT_SECRET',
+  ENABLED:false
 };
 
 const STOP_MAP={
@@ -569,6 +569,19 @@ function parseTDXArrival(a){
   return {estSeconds, arrivalTime};
 }
 
+// ── 前端快取（30秒內同站不重複呼叫 API）─────────────────────────────────────────
+const API_CACHE={};
+const CACHE_TTL=30*1000;
+async function cachedFetch(url){
+  const now=Date.now();
+  if(API_CACHE[url]&&now-API_CACHE[url].ts<CACHE_TTL) return API_CACHE[url].data;
+  const res=await fetch(url);
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const data=await res.json();
+  API_CACHE[url]={ts:now,data};
+  return data;
+}
+
 async function getBusTripsForStop(sid){
   try {
     if(!TDX_CONFIG.ENABLED) return getMockBusTripsForStop(sid);
@@ -581,11 +594,12 @@ async function getBusTripsForStop(sid){
     const cities = [...new Set(relevantRoutes.map(r=>r.tdxCity))];
     const allArrivals = [];
     for(const city of cities){
-      const res = await fetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`);
-      if(!res.ok){ console.error('TDX proxy error:', res.status, city); continue; }
-      const json = await res.json();
+      const json = await cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`).catch(e=>{console.error('TDX proxy error:',e);return null;});
+      if(!json) continue;
       allArrivals.push(...(json.data||[]));
     }
+
+    
 
     const results = [];
     allArrivals.forEach(a=>{
@@ -654,9 +668,10 @@ function renderChips(){
   const stops=ALL_STOPS.filter(s=>SIMPLE_STOPS.includes(s.id));
   document.getElementById('chips').innerHTML=stops.map(s=>`
     <button class="stop-chip${sel===s.id?' selected':''}" onclick="selStop('${s.id}')"
-      aria-pressed="${sel===s.id}" aria-label="${zh?s.zh:s.en}">
+      role="radio" aria-checked="${sel===s.id?'true':'false'}"
+      aria-label="${zh?s.zh:s.en}">
       ${zh?s.zh:s.en}
-      <span class="sen">${zh?s.en:s.zh}</span>
+      <span class="sen" aria-hidden="true">${zh?s.en:s.zh}</span>
     </button>`).join('');
 }
 function selStop(id){sel=id;renderChips();renderSR();}
@@ -665,7 +680,7 @@ async function renderSR(){
   const zh=L.cur==='zh';
   const area=document.getElementById('sr2');
   if(!sel){area.innerHTML='';return;}
-  area.innerHTML=`<div class="loading">🔍 ${zh?'查詢中…':'Loading…'}</div>`;
+  area.innerHTML=`<div class="loading" role="status" aria-busy="true" aria-live="polite">🔍 ${zh?'查詢中…':'Loading…'}</div>`;
   try {
   const d=dow(),n=nm(),schoolRes=[];
   SCHOOL_ROUTES.forEach(r=>r.trips.forEach(trip=>{
@@ -723,7 +738,7 @@ async function doSearch(){
   const area=document.getElementById('stdr');
   if(!from||!to){area.innerHTML=`<div class="card" role="alert"><p style="color:#C4520A;font-size:.95rem;">${zh?'請選擇出發站及抵達站':'Please select departure and arrival stops'}</p></div>`;return;}
   if(from===to){area.innerHTML=`<div class="card" role="alert"><p style="color:#C4520A;font-size:.95rem;">${zh?'出發站與抵達站不能相同':'Departure and arrival cannot be the same'}</p></div>`;return;}
-  area.innerHTML=`<div class="loading">🔍 ${zh?'查詢中…':'Loading…'}</div>`;
+  area.innerHTML=`<div class="loading" role="status" aria-busy="true" aria-live="polite">🔍 ${zh?'查詢中…':'Loading…'}</div>`;
   try {
   const date=dv?new Date(dv):new Date();
   const d=date.getDay()===0?7:date.getDay();
@@ -807,7 +822,7 @@ function buildBusCard(item,hs,fi,ti){
   const dirLabel=dirObj?(zh?dirObj.zh:dirObj.en):'';
   const liveBadge=isLive?`<span class="api-badge live">即時 LIVE</span>`:`<span class="api-badge">模擬 MOCK</span>`;
   const badge=`<span class="badge bb">${zh?'市區公車':'CITY BUS'}</span>`;
-  const nameHtml=`<a href="${busInfoUrl(routeNo)}" target="_blank" rel="noopener" class="route-link">${rn}</a>${liveBadge}`;
+  const nameHtml=`<a href="${busInfoUrl(routeNo)}" target="_blank" rel="noopener noreferrer" class="route-link">${rn}</a>${liveBadge}`;
   const hasNearby=hs==='S9'||(item.stops&&item.stops.some(s=>s.id==='S9'));
   const nearbyNote=hasNearby?`<div class="nearby">📍 ${zh?'長庚醫院站，步行約5分鐘可達長庚轉運站':'CGMH Station — approx. 5-min walk to Changgung Terminal'}</div>`:'';
   if(hs){
@@ -886,10 +901,24 @@ function updateUI(){
 }
 
 function init(){
-  document.getElementById('id2').value=today();
+  const todayVal=today();
+  document.getElementById('id2').value=todayVal;
+  document.getElementById('id2').min=todayVal; // 禁止選擇過去日期
   const n=new Date();
   document.getElementById('itm').value=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
   renderChips();populateSel();
+
+  // 自動通知外層 iframe 調整高度（嵌入學校網站使用）
+  function notifyHeight(){
+    const h = document.body.scrollHeight;
+    if(window.parent && window.parent !== window){
+      window.parent.postMessage({type:'cgust-bus-height', height:h}, '*');
+    }
+  }
+  // 初次載入與結果更新後通知
+  notifyHeight();
+  const observer = new MutationObserver(notifyHeight);
+  observer.observe(document.body, {childList:true, subtree:true});
 }
 init();
 </script>
