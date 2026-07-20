@@ -421,17 +421,17 @@ const STOP_MAP={
 };
 
 const BUS_ROUTES=[
-  {routeNo:'5065',operator:'桃園客運',operatorEn:'Taoyuan Bus',zh:'桃園客運 5065',en:'Taoyuan Bus 5065',tdxCity:'Taoyuan',tdxRouteName:'5065',
+  {routeNo:'5065',operator:'桃園客運',operatorEn:'Taoyuan Bus',zh:'桃園客運 5065',en:'Taoyuan Bus 5065',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=5065',tdxCity:'Taoyuan',tdxRouteName:'5065',
    directions:[{dir:0,zh:'桃園→體育大學',en:'Taoyuan→NTUS',stops:['S2']},{dir:1,zh:'體育大學→桃園',en:'NTUS→Taoyuan',stops:['S4','S2']}]},
-  {routeNo:'202',operator:'桃園客運',operatorEn:'Taoyuan Bus',zh:'桃園客運 202',en:'Taoyuan Bus 202',tdxCity:'Taoyuan',tdxRouteName:'202',
+  {routeNo:'202',operator:'桃園客運',operatorEn:'Taoyuan Bus',zh:'桃園客運 202',en:'Taoyuan Bus 202',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=202',tdxCity:'Taoyuan',tdxRouteName:'202',
    directions:[{dir:0,zh:'工四→體育大學',en:'Gongsi→NTUS',stops:['S3']},{dir:1,zh:'體育大學→工四',en:'NTUS→Gongsi',stops:['S3']}]},
-  {routeNo:'5057A',operator:'桃園客運',operatorEn:'Taoyuan Bus',zh:'桃園客運 5057A',en:'Taoyuan Bus 5057A',tdxCity:'Taoyuan',tdxRouteName:'5057A',
+  {routeNo:'5057A',operator:'桃園客運',operatorEn:'Taoyuan Bus',zh:'桃園客運 5057A',en:'Taoyuan Bus 5057A',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=5057A',tdxCity:'Taoyuan',tdxRouteName:'5057A',
    directions:[{dir:0,zh:'桃園→長庚醫院',en:'Taoyuan→CGMH',stops:['S4','S3']}]},
-  {routeNo:'966',operator:'三重客運',operatorEn:'Sanchong Bus',zh:'三重客運 966',en:'Sanchong Bus 966',tdxCity:'NewTaipei',tdxRouteName:'966',
+  {routeNo:'966',operator:'三重客運',operatorEn:'Sanchong Bus',zh:'三重客運 966',en:'Sanchong Bus 966',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=966',tdxCity:'NewTaipei',tdxRouteName:'966',
    directions:[{dir:0,zh:'台北→林口',en:'Taipei→Linkou',stops:['S9']},{dir:1,zh:'林口→台北',en:'Linkou→Taipei',stops:['S9']}]},
-  {routeNo:'967',operator:'三重客運',operatorEn:'Sanchong Bus',zh:'三重客運 967',en:'Sanchong Bus 967',tdxCity:'NewTaipei',tdxRouteName:'967',
+  {routeNo:'967',operator:'三重客運',operatorEn:'Sanchong Bus',zh:'三重客運 967',en:'Sanchong Bus 967',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=967',tdxCity:'NewTaipei',tdxRouteName:'967',
    directions:[{dir:0,zh:'台北市政府→長庚大學',en:'Taipei City Hall→CGU',stops:['S2','S3','S9']},{dir:1,zh:'長庚大學→台北市政府',en:'CGU→Taipei City Hall',stops:['S9','S3','S2']}]},
-  {routeNo:'603',operator:'三重客運',operatorEn:'Sanchong Bus',zh:'三重客運 603',en:'Sanchong Bus 603',tdxCity:'NewTaipei',tdxRouteName:'603',
+  {routeNo:'603',operator:'三重客運',operatorEn:'Sanchong Bus',zh:'三重客運 603',en:'Sanchong Bus 603',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=603',tdxCity:'NewTaipei',tdxRouteName:'603',
    directions:[{dir:0,zh:'捷運丹鳳→長庚大學',en:'MRT Danfeng→CGU',stops:['S2','S3']},{dir:1,zh:'長庚大學→捷運丹鳳',en:'CGU→MRT Danfeng',stops:['S3','S2']}]},
 ];
 
@@ -449,7 +449,7 @@ const ALL_STOPS=[
 const SIMPLE_STOPS=['S1','S2','S3','S4','S5'];
 
 const SCHOOL_ROUTES=[
-  {id:'R1',type:'school',zh:'轉運站線',en:'Terminal Route',trips:[
+  {id:'R1',type:'school',url:'',zh:'轉運站線',en:'Terminal Route',trips:[
     {id:'R1-1',stops:[{id:'S1',t:'07:30'},{id:'S4',t:'07:55'}],days:[1,2,3,4,5]},
     {id:'R1-2',stops:[{id:'S1',t:'12:00'},{id:'S4',t:'12:25'}],days:[1,2,3,4,5]},
     {id:'R1-3',stops:[{id:'S1',t:'17:30'},{id:'S4',t:'17:55'}],days:[1,2,3,4,5]},
@@ -457,7 +457,7 @@ const SCHOOL_ROUTES=[
     {id:'R1-5',stops:[{id:'S4',t:'17:00'},{id:'S1',t:'17:25'}],days:[1,2,3,4,5]},
     {id:'R1-6',stops:[{id:'S4',t:'22:00'},{id:'S1',t:'22:25'}],days:[1,2,3,4,5]},
   ]},
-  {id:'R2',type:'school',zh:'A7循環線',en:'A7 Circular',trips:[
+  {id:'R2',type:'school',url:'',zh:'A7循環線',en:'A7 Circular',trips:[
     {id:'R2-1',stops:[{id:'S2',t:'07:00'},{id:'S3',t:'07:10'},{id:'S6',t:'07:18'},{id:'S2',t:'07:28'}],days:[1,2,3,4,5,6,7]},
     {id:'R2-2',stops:[{id:'S2',t:'08:00'},{id:'S3',t:'08:10'},{id:'S6',t:'08:18'},{id:'S2',t:'08:28'}],days:[1,2,3,4,5,6,7]},
     {id:'R2-3',stops:[{id:'S2',t:'09:00'},{id:'S3',t:'09:10'},{id:'S6',t:'09:18'},{id:'S2',t:'09:28'}],days:[1,2,3,4,5,6,7]},
@@ -465,7 +465,7 @@ const SCHOOL_ROUTES=[
     {id:'R2-5',stops:[{id:'S2',t:'17:00'},{id:'S3',t:'17:10'},{id:'S6',t:'17:18'},{id:'S2',t:'17:28'}],days:[1,2,3,4,5,6,7]},
     {id:'R2-6',stops:[{id:'S2',t:'19:00'},{id:'S3',t:'19:10'},{id:'S6',t:'19:18'},{id:'S2',t:'19:28'}],days:[1,2,3,4,5,6,7]},
   ]},
-  {id:'R3',type:'school',zh:'A7校園線',en:'A7 Campus Route',trips:[
+  {id:'R3',type:'school',url:'',zh:'A7校園線',en:'A7 Campus Route',trips:[
     {id:'R3-1',stops:[{id:'S2',t:'07:30'},{id:'S7',t:'07:37'},{id:'S4',t:'07:43'},{id:'S5',t:'07:50'},{id:'S8',t:'07:57'},{id:'S3',t:'08:05'},{id:'S6',t:'08:12'},{id:'S2',t:'08:20'}],days:[1,2,3,4,5]},
     {id:'R3-2',stops:[{id:'S2',t:'08:30'},{id:'S7',t:'08:37'},{id:'S4',t:'08:43'},{id:'S5',t:'08:50'},{id:'S8',t:'08:57'},{id:'S3',t:'09:05'},{id:'S6',t:'09:12'},{id:'S2',t:'09:20'}],days:[1,2,3,4,5]},
     {id:'R3-3',stops:[{id:'S2',t:'12:30'},{id:'S7',t:'12:37'},{id:'S4',t:'12:43'},{id:'S5',t:'12:50'},{id:'S8',t:'12:57'},{id:'S3',t:'13:05'},{id:'S6',t:'13:12'},{id:'S2',t:'13:20'}],days:[1,2,3,4,5]},
@@ -505,7 +505,11 @@ const BUS_MOCK=[
   {routeNo:'603',dirIdx:1,stops:[{id:'S3',t:'18:00'},{id:'S2',t:'18:12'}],days:[1,2,3,4,5,6,7]},
 ];
 
-function busInfoUrl(n){return `https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=${n}`;}
+function busInfoUrl(routeNo, url){
+  // 優先使用路線自訂 URL，若無則用預設格式
+  if(url) return url;
+  return `https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=${routeNo}`;
+}
 function sn(id){const s=ALL_STOPS.find(x=>x.id===id);if(!s)return id;return L.cur==='zh'?s.zh:s.en;}
 function toMin(t){if(!t)return 9999;const[h,m]=t.split(':').map(Number);return h*60+m;}
 function nm(){const n=new Date();return n.getHours()*60+n.getMinutes();}
@@ -783,6 +787,9 @@ async function doSearch(){
 function buildSchoolCard(route,trip,fi,ti,hs){
   const zh=L.cur==='zh';
   const rn=zh?route.zh:route.en;
+  const schoolLink = route.url
+    ? `<a href="${route.url}" target="_blank" rel="noopener noreferrer" class="route-link" aria-label="${rn} 路線資訊">${rn}</a>`
+    : rn;
   const badge=`<span class="badge bs">${zh?'校車':'SCHOOL BUS'}</span>`;
   if(hs){
     const idx=trip.stops.findIndex(s=>s.id===hs);
@@ -793,7 +800,7 @@ function buildSchoolCard(route,trip,fi,ti,hs){
       `<span class="${s.id===hs?'sh':'sl2'}">${sn(s.id)}</span><span style="font-size:.68rem;color:#bbb;margin-left:2px;">${s.t}</span>${i<trip.stops.length-1?'<span class="arr">›</span>':''}`
     ).join('');
     return `<article class="ri school" aria-label="${rn}">
-      <div class="rh"><span class="rn">${rn}${sb}</span>${badge}</div>
+      <div class="rh"><span class="rn">${schoolLink}${sb}</span>${badge}</div>
       <div class="td">${zh?'到站':'ARRIVES'} ${at}</div>
       <div class="stops-row">${stopsHtml}</div>
     </article>`;
@@ -822,7 +829,7 @@ function buildBusCard(item,hs,fi,ti){
   const dirLabel=dirObj?(zh?dirObj.zh:dirObj.en):'';
   const liveBadge=isLive?`<span class="api-badge live">即時 LIVE</span>`:`<span class="api-badge">模擬 MOCK</span>`;
   const badge=`<span class="badge bb">${zh?'市區公車':'CITY BUS'}</span>`;
-  const nameHtml=`<a href="${busInfoUrl(routeNo)}" target="_blank" rel="noopener noreferrer" class="route-link">${rn}</a>${liveBadge}`;
+  const nameHtml=`<a href="${busInfoUrl(routeNo, route.url)}" target="_blank" rel="noopener noreferrer" class="route-link">${rn}</a>${liveBadge}`;
   const hasNearby=hs==='S9'||(item.stops&&item.stops.some(s=>s.id==='S9'));
   const nearbyNote=hasNearby?`<div class="nearby">📍 ${zh?'長庚醫院站，步行約5分鐘可達長庚轉運站':'CGMH Station — approx. 5-min walk to Changgung Terminal'}</div>`:'';
   if(hs){

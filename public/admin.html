@@ -155,7 +155,7 @@ a.lnk{color:var(--primary);}
         <div class="ct"><span>校車路線與班次</span><button class="add-btn" onclick="openAdd()">＋ 新增班次</button></div>
         <div style="overflow-x:auto;">
           <table aria-label="班次列表">
-            <thead><tr><th>路線名稱</th><th>類型</th><th>出發 → 終點</th><th>時刻</th><th>行駛日</th><th>操作</th></tr></thead>
+            <thead><tr><th>路線名稱</th><th>類型</th><th>出發 → 終點</th><th>時刻</th><th>行駛日</th><th>路線連結</th><th>操作</th></tr></thead>
             <tbody id="rtb"></tbody>
           </table>
         </div>
@@ -192,7 +192,8 @@ a.lnk{color:var(--primary);}
             <p><code>route_en</code> 路線英文名稱</p>
             <p><code>type</code> 類型：<code>school</code>（校車）或 <code>bus</code>（公車）</p>
             <p><code>days</code> 行駛日：數字組合，1=週一…7=週日，例如 <code>12345</code>=週一至五，<code>1234567</code>=每天</p>
-            <p><code>stops</code> 停靠站（最後一欄）：格式為 <code>站點代號:時刻</code> 以空格分隔</p>
+            <p><code>stops</code> 停靠站：格式為 <code>站點代號:時刻</code> 以空格分隔</p>
+            <p><code>url</code> 路線連結（選填）：公車路線查詢網址，可留空</p>
             <p style="margin-top:.75rem;font-weight:600;">站點代號對照：</p>
             <p>S1=長庚轉運站　S2=A7站　S3=候車亭　S4=A棟黑鐵門</p>
             <p>S5=庚勤樓　S6=文物館　S7=露天停車場　S8=明德樓　S9=長庚醫院站</p>
@@ -306,6 +307,11 @@ a.lnk{color:var(--primary);}
     <div class="fg" style="margin-bottom:10px;"><label>類型</label>
       <select id="ft2"><option value="school">校車 School Bus</option><option value="bus">公車 City Bus</option></select>
     </div>
+    <div class="fg" style="margin-bottom:10px;">
+      <label>路線連結 Route URL <span style="font-size:.75rem;color:var(--gray);">（選填）</span></label>
+      <input type="url" id="furl" placeholder="https://example.com/route-info">
+      <p class="hint">公車可填交通部公路客運查詢連結，校車可留空</p>
+    </div>
     <div class="fg" style="margin-bottom:10px;"><label>行駛日</label>
       <div class="dc" id="dc">
         <span class="on" data-d="1">一</span><span class="on" data-d="2">二</span><span class="on" data-d="3">三</span>
@@ -342,21 +348,23 @@ a.lnk{color:var(--primary);}
 <script>
 
 // ── Account & Session Management ─────────────────────────────────────────────
-const DEFAULT_ADMIN = {id:'admin-default', user:'admin', pass:'cgust2026', role:'admin', created:'系統預設', active:true};
+// DEFAULT_ADMIN 已廢棄，帳號管理改由 Supabase 後端處理
 let SESSION = null; // { user, role, loginTime }
 let SESSION_TIMEOUT = null;
 const SESSION_MINUTES = 30;
 let LOGIN_ATTEMPTS = {}; // { username: { count, lockedUntil } }
 let ACCOUNTS = [];
 
+// ── 後端驗證設定（帳密存 Supabase，不在前端）────────────────
+let SESSION_TOKEN = sessionStorage.getItem('admin_token') || null;
+let SESSION_USER  = null;
+
 function loadAccounts(){
-  try {
-    const raw = localStorage.getItem('cgust_accounts');
-    ACCOUNTS = raw ? JSON.parse(raw) : [DEFAULT_ADMIN];
-  } catch(e) { ACCOUNTS = [DEFAULT_ADMIN]; }
+  // 已改為後端 API，此函式保留相容性
+  ACCOUNTS = [];
 }
 function saveAccounts(){
-  try { localStorage.setItem('cgust_accounts', JSON.stringify(ACCOUNTS)); } catch(e){}
+  // 已改為後端 API，此函式保留相容性
 }
 
 function isLocked(username){
@@ -382,7 +390,7 @@ function lockMsg(username){
 }
 
 function startSession(account){
-  SESSION = {user: account.user, role: account.role, loginTime: Date.now()};
+  SESSION = {user: account.username || account.user, role: account.role, loginTime: Date.now()};
   resetSessionTimer();
   // Show/hide admin-only tabs
   const isAdmin = SESSION.role === 'admin';
@@ -430,7 +438,7 @@ function autoLogout(){
   doLogout();
 }
 
-let CRED={user:'admin',pass:'cgu2024'}; // legacy - kept for changePw compat
+// 帳密驗證已移至後端 Supabase，前端不存放任何帳密
 
 let STOPS=[
   {id:'S1',zh:'長庚轉運站',en:'Changgung Terminal'},
@@ -444,7 +452,7 @@ let STOPS=[
   {id:'S9',zh:'長庚醫院站',en:'CGMH Station'},
 ];
 let ROUTES=[
-  {id:'R1',type:'school',zh:'轉運站線',en:'Terminal Route',trips:[
+  {id:'R1',type:'school',zh:'轉運站線',en:'Terminal Route',url:'',trips:[
     {id:'R1-1',stops:[{id:'S1',t:'07:30'},{id:'S4',t:'07:55'}],days:[1,2,3,4,5]},
     {id:'R1-2',stops:[{id:'S1',t:'12:00'},{id:'S4',t:'12:25'}],days:[1,2,3,4,5]},
     {id:'R1-3',stops:[{id:'S1',t:'17:30'},{id:'S4',t:'17:55'}],days:[1,2,3,4,5]},
@@ -452,7 +460,7 @@ let ROUTES=[
     {id:'R1-5',stops:[{id:'S4',t:'17:00'},{id:'S1',t:'17:25'}],days:[1,2,3,4,5]},
     {id:'R1-6',stops:[{id:'S4',t:'22:00'},{id:'S1',t:'22:25'}],days:[1,2,3,4,5]},
   ]},
-  {id:'R2',type:'school',zh:'A7循環線',en:'A7 Circular',trips:[
+  {id:'R2',type:'school',zh:'A7循環線',en:'A7 Circular',url:'',trips:[
     {id:'R2-1',stops:[{id:'S2',t:'07:00'},{id:'S3',t:'07:10'},{id:'S6',t:'07:18'},{id:'S2',t:'07:28'}],days:[1,2,3,4,5,6,7]},
     {id:'R2-2',stops:[{id:'S2',t:'08:00'},{id:'S3',t:'08:10'},{id:'S6',t:'08:18'},{id:'S2',t:'08:28'}],days:[1,2,3,4,5,6,7]},
     {id:'R2-3',stops:[{id:'S2',t:'09:00'},{id:'S3',t:'09:10'},{id:'S6',t:'09:18'},{id:'S2',t:'09:28'}],days:[1,2,3,4,5,6,7]},
@@ -460,7 +468,7 @@ let ROUTES=[
     {id:'R2-5',stops:[{id:'S2',t:'17:00'},{id:'S3',t:'17:10'},{id:'S6',t:'17:18'},{id:'S2',t:'17:28'}],days:[1,2,3,4,5,6,7]},
     {id:'R2-6',stops:[{id:'S2',t:'19:00'},{id:'S3',t:'19:10'},{id:'S6',t:'19:18'},{id:'S2',t:'19:28'}],days:[1,2,3,4,5,6,7]},
   ]},
-  {id:'R3',type:'school',zh:'A7校園線',en:'A7 Campus Route',trips:[
+  {id:'R3',type:'school',zh:'A7校園線',en:'A7 Campus Route',url:'',trips:[
     {id:'R3-1',stops:[{id:'S2',t:'07:30'},{id:'S7',t:'07:37'},{id:'S4',t:'07:43'},{id:'S5',t:'07:50'},{id:'S8',t:'07:57'},{id:'S3',t:'08:05'},{id:'S6',t:'08:12'},{id:'S2',t:'08:20'}],days:[1,2,3,4,5]},
     {id:'R3-2',stops:[{id:'S2',t:'08:30'},{id:'S7',t:'08:37'},{id:'S4',t:'08:43'},{id:'S5',t:'08:50'},{id:'S8',t:'08:57'},{id:'S3',t:'09:05'},{id:'S6',t:'09:12'},{id:'S2',t:'09:20'}],days:[1,2,3,4,5]},
     {id:'R3-3',stops:[{id:'S2',t:'12:30'},{id:'S7',t:'12:37'},{id:'S4',t:'12:43'},{id:'S5',t:'12:50'},{id:'S8',t:'12:57'},{id:'S3',t:'13:05'},{id:'S6',t:'13:12'},{id:'S2',t:'13:20'}],days:[1,2,3,4,5]},
@@ -476,50 +484,75 @@ function sn(id){const s=STOPS.find(x=>x.id===id);return s?s.zh:id;}
 function sopts(sel){return STOPS.map(s=>`<option value="${s.id}"${s.id===sel?' selected':''}>${s.zh}</option>`).join('');}
 
 // ── Login ─────────────────────────────────────────────────────────────────────
-function doLogin(){
+async function doLogin(){
   const u = document.getElementById('iu').value.trim();
   const p = document.getElementById('ip').value;
   const errEl = document.getElementById('le');
+  const btn = document.querySelector('.lbtn');
   if(!u||!p){ errEl.textContent='請輸入帳號及密碼'; return; }
-  if(isLocked(u)){
-    errEl.textContent = lockMsg(u);
-    document.getElementById('ip').value=''; return;
-  }
-  // 從 ACCOUNTS 驗證（含 localStorage 載入的帳號）
-  const account = ACCOUNTS.find(a => a.user===u && a.active!==false);
-  if(account && account.pass===p){
-    recordAttempt(u, true);
-    document.getElementById('ls').style.display='none';
-    document.getElementById('app').style.display='block';
+
+  // 禁用按鈕避免重複送出
+  btn.disabled = true;
+  btn.textContent = '登入中...';
+  errEl.textContent = '';
+
+  try {
+    const res = await fetch('/api/auth-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, password: p })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = data.error || '登入失敗';
+      document.getElementById('ip').value='';
+      document.getElementById('ip').focus();
+      return;
+    }
+
+    // 登入成功
+    SESSION_TOKEN = data.token;
+    SESSION_USER  = data.user;
+    sessionStorage.setItem('admin_token', SESSION_TOKEN);
+
     document.getElementById('iu').value='';
     document.getElementById('ip').value='';
-    errEl.textContent='';
-    startSession(account);
+    document.getElementById('ls').style.display='none';
+    document.getElementById('app').style.display='block';
+    startSession(SESSION_USER);
     renderR(); renderS(); renderAccounts();
-  } else {
-    recordAttempt(u, false);
-    if(isLocked(u)){
-      errEl.textContent = lockMsg(u);
-    } else {
-      const att = LOGIN_ATTEMPTS[u];
-      const left = att ? 5 - att.count : 5;
-      errEl.textContent = `帳號或密碼錯誤（還有 ${left} 次機會）`;
-    }
-    document.getElementById('ip').value='';
-    document.getElementById('ip').focus();
+
+  } catch(err) {
+    console.error('Login error:', err);
+    errEl.textContent = '連線錯誤，請稍後再試';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '登入 Login';
   }
 }
-function doLogout(){
+async function doLogout(){
   // 清除 session timer
   if(SESSION_TIMEOUT){ clearInterval(SESSION_TIMEOUT); SESSION_TIMEOUT = null; }
-  // 移除 activity listeners（避免記憶體洩漏）
   if(_activityHandler){
     ['click','keydown','mousemove','touchstart'].forEach(ev =>
       document.removeEventListener(ev, _activityHandler)
     );
     _activityHandler = null;
   }
+  // 呼叫後端刪除 Session
+  if(SESSION_TOKEN){
+    try {
+      await fetch('/api/auth-logout', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SESSION_TOKEN}` }
+      });
+    } catch(e) { console.warn('Logout API error:', e); }
+    SESSION_TOKEN = null;
+    sessionStorage.removeItem('admin_token');
+  }
   SESSION = null;
+  SESSION_USER = null;
   const timerEl = document.getElementById('session-timer');
   if(timerEl) timerEl.textContent = '';
   document.getElementById('ls').style.display='flex';
@@ -543,12 +576,16 @@ function renderR(){
   ROUTES.forEach(r=>r.trips.forEach(trip=>{
     const f=trip.stops[0],l=trip.stops[trip.stops.length-1];
     const ds=trip.days.map(d=>DN[d]).join('');
+    const urlCell = r.url
+      ? `<a href="${r.url}" target="_blank" rel="noopener noreferrer" style="font-size:.8rem;color:var(--primary);">查看路線</a>`
+      : `<span style="font-size:.78rem;color:var(--gray);">—</span>`;
     h+=`<tr>
       <td>${r.zh}<div style="font-size:.75rem;color:var(--gray);">${r.en}</div></td>
       <td><span class="badge ${r.type==='school'?'bs':'bb'}">${r.type==='school'?'校車':'公車'}</span></td>
       <td style="font-size:.82rem;">${sn(f.id)} → ${sn(l.id)}</td>
       <td style="font-family:monospace;font-size:.85rem;">${f.t} → ${l.t}</td>
       <td style="font-size:.8rem;">${ds}</td>
+      <td>${urlCell}</td>
       <td style="white-space:nowrap;">
         <button class="ab" onclick="editT('${r.id}','${trip.id}')">編輯</button>
         <button class="ab d" onclick="delT('${r.id}','${trip.id}')">刪除</button>
@@ -561,12 +598,12 @@ function renderR(){
 // ── CSV Export ────────────────────────────────────────────────────────────────
 function exportCSV(){
   if(!ROUTES||!ROUTES.length){alert('目前沒有班次資料可匯出');return;}
-  const rows=[['route_zh','route_en','type','days','stops']];
+  const rows=[['route_zh','route_en','type','days','stops','url']];
   ROUTES.forEach(r=>{
     r.trips.forEach(trip=>{
       const days=trip.days.slice().sort().join('');
       const stops=trip.stops.map(s=>`${s.id}:${s.t}`).join(' ');
-      rows.push([r.zh,r.en,r.type,days,stops]);
+      rows.push([r.zh,r.en,r.type,days,stops,r.url||'']);
     });
   });
   const csv=rows.map(row=>row.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(',')).join('\r\n');
@@ -605,7 +642,7 @@ function parseCSVLine(line){
 function validateRow(fields,rowNum){
   const errors=[];
   if(fields.length<5) return {ok:false,errors:['欄位數不足，需要5欄']};
-  const [zh,en,type,daysStr,stopsStr]=fields;
+  const [zh,en,type,daysStr,stopsStr,urlStr]=fields;
   if(!zh) errors.push('路線中文名稱不可空白');
   if(!['school','bus'].includes(type)) errors.push(`類型需為 school 或 bus，目前為「${type}」`);
   // validate days
@@ -625,7 +662,7 @@ function validateRow(fields,rowNum){
       if(!/^\d{2}:\d{2}$/.test(t)) errors.push(`第${i+1}站時刻格式錯誤（應為 HH:MM）`);
     }
   });
-  return {ok:errors.length===0,errors,zh,en,type,daysStr,stopsStr};
+  return {ok:errors.length===0,errors,zh,en,type,daysStr,stopsStr,urlStr:urlStr||''};
 }
 
 function previewCSV(input){
@@ -683,7 +720,7 @@ function confirmImport(){
   // Build new route objects from valid rows
   const newRoutes=[];
   validRows.forEach((row,i)=>{
-    const {zh,en,type,daysStr,stopsStr}=row;
+    const {zh,en,type,daysStr,stopsStr,urlStr}=row;
     const days=[...daysStr].map(Number).filter(n=>n>=1&&n<=7);
     const stops=stopsStr.split(' ').filter(Boolean).map(p=>{
       const pts=p.split(':');
@@ -693,7 +730,7 @@ function confirmImport(){
     // find existing route with same zh name to group trips
     let route=newRoutes.find(r=>r.zh===zh&&r.type===type);
     if(!route){
-      route={id:`R-${Date.now()}-${i}`,type,zh,en,trips:[]};
+      route={id:`R-${Date.now()}-${i}`,type,zh,en,url:urlStr||'',trips:[]};
       newRoutes.push(route);
     }
     route.trips.push({id:tripId,stops,days});
@@ -752,7 +789,7 @@ function addSR(sid='',t=''){
 }
 function openAdd(){
   editId=null;document.getElementById('mtt').textContent='新增班次';
-  ['frz','fre'].forEach(id=>document.getElementById(id).value='');
+  ['frz','fre','furl'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('ft2').value='school';
   document.getElementById('se').innerHTML='';
   document.querySelectorAll('#dc span').forEach(c=>c.classList.toggle('on',[1,2,3,4,5].includes(+c.dataset.d)));
@@ -764,6 +801,7 @@ function editT(rid,tid){
   const r=ROUTES.find(x=>x.id===rid),trip=r.trips.find(x=>x.id===tid);
   editId={rid,tid};document.getElementById('mtt').textContent='編輯班次';
   document.getElementById('frz').value=r.zh;document.getElementById('fre').value=r.en;
+  document.getElementById('furl').value=r.url||'';
   document.getElementById('ft2').value=r.type;
   document.querySelectorAll('#dc span').forEach(c=>c.classList.toggle('on',trip.days.includes(+c.dataset.d)));
   document.getElementById('se').innerHTML='';
@@ -775,16 +813,17 @@ document.addEventListener('DOMContentLoaded',function(){const dc=document.getEle
 function saveTrip(){
   const zh=document.getElementById('frz').value.trim(),en=document.getElementById('fre').value.trim();
   const type=document.getElementById('ft2').value;
+  const url=document.getElementById('furl').value.trim();
   const days=[...document.querySelectorAll('#dc span.on')].map(c=>+c.dataset.d);
   const stops=[...document.querySelectorAll('#se .sr2')].map(r=>({id:r.querySelector('select').value,t:r.querySelector('input').value})).filter(s=>s.t);
   if(!zh||stops.length<2){alert('請填寫路線名稱及至少2個停靠站');return;}
   if(!days.length){alert('請至少選擇一個行駛日');return;}
   if(editId){
     const r=ROUTES.find(x=>x.id===editId.rid),trip=r.trips.find(x=>x.id===editId.tid);
-    r.zh=zh;r.en=en;r.type=type;trip.stops=stops;trip.days=days;
+    r.zh=zh;r.en=en;r.type=type;r.url=url;trip.stops=stops;trip.days=days;
   } else {
     const nid='R'+Date.now();
-    ROUTES.push({id:nid,type,zh,en,trips:[{id:nid+'-1',stops,days}]});
+    ROUTES.push({id:nid,type,zh,en,url,trips:[{id:nid+'-1',stops,days}]});
   }
   closeMo();renderR();
 }
@@ -817,24 +856,50 @@ function saveStop(){
 }
 
 // ── Password ──────────────────────────────────────────────────────────────────
-function changePw(){
+async function changePw(){
   const cur=document.getElementById('pw-cur').value;
   const nw=document.getElementById('pw-new').value;
   const cfm=document.getElementById('pw-cfm').value;
   const msg=document.getElementById('pw-msg');
   msg.className='pw-msg';
+  if(!SESSION_TOKEN){msg.textContent='請先登入';msg.className='pw-msg err';return;}
   if(!cur||!nw||!cfm){msg.textContent='請填寫所有欄位';msg.className='pw-msg err';return;}
-  // 防護：SESSION 不存在時不執行
-  if(!SESSION){ msg.textContent='請先登入'; msg.className='pw-msg err'; return; }
-  // Find current user in ACCOUNTS
-  const acc=ACCOUNTS.find(a=>a.user===SESSION.user);
-  if(!acc||acc.pass!==cur){msg.textContent='目前密碼錯誤';msg.className='pw-msg err';document.getElementById('pw-cur').focus();return;}
   if(nw.length<8){msg.textContent='新密碼至少需要 8 個字元';msg.className='pw-msg err';return;}
   if(nw!==cfm){msg.textContent='新密碼與確認密碼不符';msg.className='pw-msg err';return;}
-  acc.pass=nw;
-  saveAccounts();
-  ['pw-cur','pw-new','pw-cfm'].forEach(id=>document.getElementById(id).value='');
-  msg.textContent='密碼已成功變更 Password changed successfully';msg.className='pw-msg ok';
+  try {
+    // 先用目前密碼重新驗證
+    const loginRes = await fetch('/api/auth-login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:SESSION_USER.username, password:cur})
+    });
+    if(!loginRes.ok){
+      msg.textContent='目前密碼錯誤';msg.className='pw-msg err';
+      document.getElementById('pw-cur').focus();return;
+    }
+    // 取得自己的帳號 ID 再更新密碼
+    const accRes = await fetch('/api/auth-accounts',{
+      headers:{'Authorization':`Bearer ${SESSION_TOKEN}`}
+    });
+    const accData = await accRes.json();
+    const myAccount = accData.accounts?.find(a=>a.username===SESSION_USER.username);
+    if(!myAccount){msg.textContent='找不到帳號資料';msg.className='pw-msg err';return;}
+
+    const updateRes = await fetch(`/api/auth-accounts?id=${myAccount.id}`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},
+      body:JSON.stringify({password:nw})
+    });
+    if(!updateRes.ok){
+      const d=await updateRes.json();
+      msg.textContent=d.error||'變更失敗';msg.className='pw-msg err';return;
+    }
+    ['pw-cur','pw-new','pw-cfm'].forEach(id=>document.getElementById(id).value='');
+    msg.textContent='密碼已成功變更 Password changed successfully';
+    msg.className='pw-msg ok';
+  } catch(e){
+    msg.textContent='連線錯誤，請稍後再試';msg.className='pw-msg err';
+  }
 }
 
 // ── TDX ───────────────────────────────────────────────────────────────────────
@@ -852,17 +917,27 @@ const ROLE_LABEL = {admin:'管理員', editor:'編輯者'};
 const ROLE_BG    = {admin:'var(--pl)', editor:'var(--sl)'};
 const ROLE_COL   = {admin:'var(--primary)', editor:'var(--success)'};
 
-function renderAccounts(){
+async function renderAccounts(){
   const tbody = document.getElementById('acctb');
-  if(!tbody) return; // editor role: tab not visible, skip
+  if(!tbody) return;
+  if(!SESSION_TOKEN) return;
+  if(!SESSION || SESSION.role !== 'admin') return;
+  try {
+    const res = await fetch('/api/auth-accounts',{
+      headers:{'Authorization':`Bearer ${SESSION_TOKEN}`}
+    });
+    if(!res.ok) return;
+    const data = await res.json();
+    ACCOUNTS = data.accounts || [];
+  } catch(e) { console.error('renderAccounts fetch error:', e); return; }
   let h = '';
   ACCOUNTS.forEach(acc=>{
     const bg  = ROLE_BG[acc.role]  || 'var(--gl)';
     const col = ROLE_COL[acc.role] || 'var(--gray)';
     const label = ROLE_LABEL[acc.role] || acc.role;
     const isActive = acc.active !== false;
-    const isSelf   = SESSION && SESSION.user === acc.user;
-    const isDefault= acc.id === 'admin-default';
+    const isSelf   = SESSION_USER && SESSION_USER.username === acc.username;
+    const isDefault= acc.username === 'admin';
     const canModify= !isSelf && !isDefault;
 
     const statusDot = isActive
@@ -870,14 +945,14 @@ function renderAccounts(){
       : '<span style="color:var(--gray);">● 停用</span>';
 
     h += `<tr>
-      <td><strong>${acc.user}</strong>${isSelf?' <span style="font-size:.7rem;color:var(--gray);">(您)</span>':''}</td>
+      <td><strong>${acc.username}</strong>${isSelf?' <span style="font-size:.7rem;color:var(--gray);">(您)</span>':''}</td>
       <td><span style="background:${bg};color:${col};padding:2px 9px;border-radius:10px;font-size:.72rem;font-weight:600;">${label}</span></td>
       <td style="font-size:.82rem;">${statusDot}</td>
       <td style="font-size:.78rem;color:var(--gray);">${acc.created || '—'}</td>
       <td style="white-space:nowrap;">
-        ${!isSelf ? `<button class="ab" onclick="openResetPw('${acc.user}')">重設密碼</button>` : ''}
-        ${canModify ? `<button class="ab" onclick="toggleAccountStatus('${acc.user}')">${isActive?'停用':'啟用'}</button>` : ''}
-        ${canModify ? `<button class="ab d" onclick="deleteAccount('${acc.user}')">刪除</button>` : ''}
+        ${!isSelf ? `<button class="ab" onclick="openResetPw('${acc.id}','${acc.username}')">重設密碼</button>` : ''}
+        ${canModify ? `<button class="ab" onclick="toggleAccountStatus('${acc.id}',${acc.active})">${isActive?'停用':'啟用'}</button>` : ''}
+        ${canModify ? `<button class="ab d" onclick="deleteAccount('${acc.id}','${acc.username}')">刪除</button>` : ''}
       </td>
     </tr>`;
   });
@@ -893,56 +968,61 @@ function openAddAccount(){
   document.getElementById('ac-user').focus();
 }
 
-function saveAccount(){
+async function saveAccount(){
   const user = document.getElementById('ac-user').value.trim();
   const pass = document.getElementById('ac-pass').value;
   const cfm  = document.getElementById('ac-cfm').value;
   const role = document.getElementById('ac-role').value;
   const errEl = document.getElementById('ac-err');
   errEl.textContent = '';
-
-  if(!user || user.length < 4){
-    errEl.textContent = '帳號至少需要 4 個字元'; return;
+  if(!user||user.length<4){errEl.textContent='帳號至少需要 4 個字元';return;}
+  if(!/^[a-zA-Z0-9_]+$/.test(user)){errEl.textContent='帳號只能使用英文、數字、底線';return;}
+  if(pass.length<8){errEl.textContent='密碼至少需要 8 個字元';return;}
+  if(pass!==cfm){errEl.textContent='兩次密碼輸入不一致';return;}
+  try {
+    const res = await fetch('/api/auth-accounts',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},
+      body:JSON.stringify({username:user, password:pass, role})
+    });
+    const data = await res.json();
+    if(!res.ok){errEl.textContent=data.error||'建立失敗';return;}
+    closeAccMo();
+    await renderAccounts();
+  } catch(e){
+    errEl.textContent='連線錯誤，請稍後再試';
   }
-  if(!/^[a-zA-Z0-9_]+$/.test(user)){
-    errEl.textContent = '帳號只能使用英文、數字、底線'; return;
-  }
-  if(ACCOUNTS.find(a => a.user === user)){
-    errEl.textContent = '此帳號名稱已存在'; return;
-  }
-  if(pass.length < 8){
-    errEl.textContent = '密碼至少需要 8 個字元'; return;
-  }
-  if(pass !== cfm){
-    errEl.textContent = '兩次密碼輸入不一致'; return;
-  }
-
-  const now = new Date();
-  const created = `${now.getFullYear()}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}`;
-  ACCOUNTS.push({id:'acc-'+Date.now(), user, pass, role, created, active:true});
-  saveAccounts();
-  closeAccMo();
-  renderAccounts();
 }
 
-function toggleAccountStatus(username){
-  const acc = ACCOUNTS.find(a => a.user === username);
-  if(!acc) throw new Error('找不到帳號: ' + username);
-  acc.active = acc.active === false ? true : false;
-  saveAccounts();
-  renderAccounts();
+async function toggleAccountStatus(id, currentActive){
+  try {
+    const res = await fetch(`/api/auth-accounts?id=${id}`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},
+      body:JSON.stringify({active:!currentActive})
+    });
+    if(!res.ok){const d=await res.json();alert(d.error||'操作失敗');return;}
+    await renderAccounts();
+  } catch(e){ alert('連線錯誤'); }
 }
 
-function deleteAccount(username){
+async function deleteAccount(id, username){
   if(!confirm(`確定刪除帳號「${username}」？此操作無法復原。`)) return;
-  ACCOUNTS = ACCOUNTS.filter(a => a.user !== username);
-  saveAccounts();
-  renderAccounts();
+  try {
+    const res = await fetch(`/api/auth-accounts?id=${id}`,{
+      method:'DELETE',
+      headers:{'Authorization':`Bearer ${SESSION_TOKEN}`}
+    });
+    if(!res.ok){const d=await res.json();alert(d.error||'刪除失敗');return;}
+    await renderAccounts();
+  } catch(e){ alert('連線錯誤'); }
 }
 
 let resetTarget = '';
-function openResetPw(username){
+let resetTargetId = '';
+function openResetPw(id, username){
   resetTarget = username;
+  resetTargetId = id;
   document.getElementById('rsp-username').textContent = username;
   document.getElementById('rsp-pass').value = '';
   document.getElementById('rsp-cfm').value = '';
@@ -951,24 +1031,23 @@ function openResetPw(username){
   document.getElementById('rsp-pass').focus();
 }
 
-function confirmResetPw(){
+async function confirmResetPw(){
   const nw  = document.getElementById('rsp-pass').value;
   const cfm = document.getElementById('rsp-cfm').value;
   const errEl = document.getElementById('rsp-err');
   errEl.textContent = '';
-
-  if(nw.length < 8){
-    errEl.textContent = '密碼至少需要 8 個字元'; return;
-  }
-  if(nw !== cfm){
-    errEl.textContent = '兩次密碼輸入不一致'; return;
-  }
-  const acc = ACCOUNTS.find(a => a.user === resetTarget);
-  if(!acc) throw new Error('找不到帳號: ' + resetTarget);
-  acc.pass = nw;
-  saveAccounts();
-  closeRspMo();
-  alert(`帳號「${resetTarget}」密碼已重設完成。`);
+  if(nw.length<8){errEl.textContent='密碼至少需要 8 個字元';return;}
+  if(nw!==cfm){errEl.textContent='兩次密碼輸入不一致';return;}
+  try {
+    const res = await fetch(`/api/auth-accounts?id=${resetTargetId}`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},
+      body:JSON.stringify({password:nw})
+    });
+    if(!res.ok){const d=await res.json();errEl.textContent=d.error||'重設失敗';return;}
+    closeRspMo();
+    alert(`帳號「${resetTarget}」密碼已重設完成。`);
+  } catch(e){ errEl.textContent='連線錯誤，請稍後再試'; }
 }
 
 function closeAccMo(){
@@ -980,9 +1059,29 @@ function closeRspMo(){
 }
 
 // 所有 Modal 事件統一在 DOMContentLoaded 後綁定，避免元素尚未存在時報錯
-document.addEventListener('DOMContentLoaded', function(){
-  // 頁面載入後立即從 localStorage 載入帳號資料
-  loadAccounts();
+document.addEventListener('DOMContentLoaded', async function(){
+  // 頁面載入後檢查是否有已登入的 Session Token
+  if(SESSION_TOKEN){
+    try {
+      const res = await fetch('/api/auth-verify',{
+        headers:{'Authorization':`Bearer ${SESSION_TOKEN}`}
+      });
+      if(res.ok){
+        const data = await res.json();
+        SESSION_USER = data.user;
+        document.getElementById('ls').style.display='none';
+        document.getElementById('app').style.display='block';
+        startSession(SESSION_USER);
+        renderR(); renderS(); renderAccounts();
+        return;
+      }
+    } catch(e){ console.warn('Token verify error:', e); }
+    // Token 無效，清除
+    SESSION_TOKEN = null;
+    sessionStorage.removeItem('admin_token');
+  }
+  // 未登入，顯示登入畫面
+  document.getElementById('ls').style.display='flex';
 });
 
 document.addEventListener('DOMContentLoaded', function(){
