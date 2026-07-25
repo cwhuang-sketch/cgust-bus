@@ -408,144 +408,93 @@ footer{
 const L={cur:'zh'};
 const MAX=10;
 
-const TDX_CONFIG={
-  CLIENT_ID:'',         // 金鑰存在 Vercel 環境變數，前端不需要填
-  CLIENT_SECRET:'',     // 金鑰存在 Vercel 環境變數，前端不需要填
-  ENABLED:true          // 已啟用 TDX 真實資料
-};
+// ── 設定 ─────────────────────────────────────────────────────
+const TDX_CONFIG={ ENABLED:true };
 
-const STOP_MAP={
-  '長庚轉運站':'S1','長庚醫院':'S9',
-  '體育大學':'S2','A7長庚':'S2',
-  '長庚科技大學':'S4','長庚大學':'S3',
-};
+// ── 動態資料（從 /api/schedule 載入）────────────────────────
+let ALL_STOPS    = [];
+let SIMPLE_STOPS = [];
+let SCHOOL_ROUTES = [];
+let BUS_ROUTES   = [];
+let DATA_LOADED  = false;
+let DATA_ERROR   = false;
 
-const BUS_ROUTES=[
-  {routeNo:'5065',operator:'桃園客運',operatorEn:'Taoyuan Bus',zh:'桃園客運 5065',en:'Taoyuan Bus 5065',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=5065',tdxCity:'Taoyuan',tdxRouteName:'5065',
-   directions:[{dir:0,zh:'桃園→體育大學',en:'Taoyuan→NTUS',stops:['S2']},{dir:1,zh:'體育大學→桃園',en:'NTUS→Taoyuan',stops:['S4','S2']}]},
-  {routeNo:'202',operator:'桃園客運',operatorEn:'Taoyuan Bus',zh:'桃園客運 202',en:'Taoyuan Bus 202',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=202',tdxCity:'Taoyuan',tdxRouteName:'202',
-   directions:[{dir:0,zh:'工四→體育大學',en:'Gongsi→NTUS',stops:['S3']},{dir:1,zh:'體育大學→工四',en:'NTUS→Gongsi',stops:['S3']}]},
-  {routeNo:'5057A',operator:'桃園客運',operatorEn:'Taoyuan Bus',zh:'桃園客運 5057A',en:'Taoyuan Bus 5057A',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=5057A',tdxCity:'Taoyuan',tdxRouteName:'5057A',
-   directions:[{dir:0,zh:'桃園→長庚醫院',en:'Taoyuan→CGMH',stops:['S4','S3']}]},
-  {routeNo:'966',operator:'三重客運',operatorEn:'Sanchong Bus',zh:'三重客運 966',en:'Sanchong Bus 966',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=966',tdxCity:'NewTaipei',tdxRouteName:'966',
-   directions:[{dir:0,zh:'台北→林口',en:'Taipei→Linkou',stops:['S9']},{dir:1,zh:'林口→台北',en:'Linkou→Taipei',stops:['S9']}]},
-  {routeNo:'967',operator:'三重客運',operatorEn:'Sanchong Bus',zh:'三重客運 967',en:'Sanchong Bus 967',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=967',tdxCity:'NewTaipei',tdxRouteName:'967',
-   directions:[{dir:0,zh:'台北市政府→長庚大學',en:'Taipei City Hall→CGU',stops:['S2','S3','S9']},{dir:1,zh:'長庚大學→台北市政府',en:'CGU→Taipei City Hall',stops:['S9','S3','S2']}]},
-  {routeNo:'603',operator:'三重客運',operatorEn:'Sanchong Bus',zh:'三重客運 603',en:'Sanchong Bus 603',url:'https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=603',tdxCity:'NewTaipei',tdxRouteName:'603',
-   directions:[{dir:0,zh:'捷運丹鳳→長庚大學',en:'MRT Danfeng→CGU',stops:['S2','S3']},{dir:1,zh:'長庚大學→捷運丹鳳',en:'CGU→MRT Danfeng',stops:['S3','S2']}]},
-];
+async function loadSchedule(){
+  try {
+    const res = await fetch('/api/schedule');
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
 
-const ALL_STOPS=[
-  {id:'S1',zh:'長庚轉運站',en:'Changgung Terminal'},
-  {id:'S2',zh:'A7站',en:'MRT A7 Station'},
-  {id:'S3',zh:'候車亭',en:'CGUST Bus Stop'},
-  {id:'S4',zh:'A棟黑鐵門',en:'Building A Gate'},
-  {id:'S5',zh:'庚勤樓',en:'Genqin Building'},
-  {id:'S6',zh:'文物館',en:'Heritage Hall'},
-  {id:'S7',zh:'露天停車場',en:'Open Parking Lot'},
-  {id:'S8',zh:'明德樓',en:'Mingde Building'},
-  {id:'S9',zh:'長庚醫院站',en:'CGMH Station',stdOnly:true},
-];
-const SIMPLE_STOPS=['S1','S2','S3','S4','S5'];
+    // 站點
+    ALL_STOPS = data.stops.map(s=>({
+      id: s.id,
+      zh: s.name_zh,
+      en: s.name_en,
+      stdOnly: !s.simple
+    }));
+    SIMPLE_STOPS = data.stops.filter(s=>s.simple).map(s=>s.id);
 
-const SCHOOL_ROUTES=[
-  {id:'R1',type:'school',url:'',zh:'轉運站線',en:'Terminal Route',trips:[
-    {id:'R1-1',stops:[{id:'S1',t:'07:30'},{id:'S4',t:'07:55'}],days:[1,2,3,4,5]},
-    {id:'R1-2',stops:[{id:'S1',t:'12:00'},{id:'S4',t:'12:25'}],days:[1,2,3,4,5]},
-    {id:'R1-3',stops:[{id:'S1',t:'17:30'},{id:'S4',t:'17:55'}],days:[1,2,3,4,5]},
-    {id:'R1-4',stops:[{id:'S4',t:'08:10'},{id:'S1',t:'08:35'}],days:[1,2,3,4,5]},
-    {id:'R1-5',stops:[{id:'S4',t:'17:00'},{id:'S1',t:'17:25'}],days:[1,2,3,4,5]},
-    {id:'R1-6',stops:[{id:'S4',t:'22:00'},{id:'S1',t:'22:25'}],days:[1,2,3,4,5]},
-  ]},
-  {id:'R2',type:'school',url:'',zh:'A7循環線',en:'A7 Circular',trips:[
-    {id:'R2-1',stops:[{id:'S2',t:'07:00'},{id:'S3',t:'07:10'},{id:'S6',t:'07:18'},{id:'S2',t:'07:28'}],days:[1,2,3,4,5,6,7]},
-    {id:'R2-2',stops:[{id:'S2',t:'08:00'},{id:'S3',t:'08:10'},{id:'S6',t:'08:18'},{id:'S2',t:'08:28'}],days:[1,2,3,4,5,6,7]},
-    {id:'R2-3',stops:[{id:'S2',t:'09:00'},{id:'S3',t:'09:10'},{id:'S6',t:'09:18'},{id:'S2',t:'09:28'}],days:[1,2,3,4,5,6,7]},
-    {id:'R2-4',stops:[{id:'S2',t:'12:00'},{id:'S3',t:'12:10'},{id:'S6',t:'12:18'},{id:'S2',t:'12:28'}],days:[1,2,3,4,5,6,7]},
-    {id:'R2-5',stops:[{id:'S2',t:'17:00'},{id:'S3',t:'17:10'},{id:'S6',t:'17:18'},{id:'S2',t:'17:28'}],days:[1,2,3,4,5,6,7]},
-    {id:'R2-6',stops:[{id:'S2',t:'19:00'},{id:'S3',t:'19:10'},{id:'S6',t:'19:18'},{id:'S2',t:'19:28'}],days:[1,2,3,4,5,6,7]},
-  ]},
-  {id:'R3',type:'school',url:'',zh:'A7校園線',en:'A7 Campus Route',trips:[
-    {id:'R3-1',stops:[{id:'S2',t:'07:30'},{id:'S7',t:'07:37'},{id:'S4',t:'07:43'},{id:'S5',t:'07:50'},{id:'S8',t:'07:57'},{id:'S3',t:'08:05'},{id:'S6',t:'08:12'},{id:'S2',t:'08:20'}],days:[1,2,3,4,5]},
-    {id:'R3-2',stops:[{id:'S2',t:'08:30'},{id:'S7',t:'08:37'},{id:'S4',t:'08:43'},{id:'S5',t:'08:50'},{id:'S8',t:'08:57'},{id:'S3',t:'09:05'},{id:'S6',t:'09:12'},{id:'S2',t:'09:20'}],days:[1,2,3,4,5]},
-    {id:'R3-3',stops:[{id:'S2',t:'12:30'},{id:'S7',t:'12:37'},{id:'S4',t:'12:43'},{id:'S5',t:'12:50'},{id:'S8',t:'12:57'},{id:'S3',t:'13:05'},{id:'S6',t:'13:12'},{id:'S2',t:'13:20'}],days:[1,2,3,4,5]},
-    {id:'R3-4',stops:[{id:'S2',t:'17:30'},{id:'S7',t:'17:37'},{id:'S4',t:'17:43'},{id:'S5',t:'17:50'},{id:'S8',t:'17:57'},{id:'S3',t:'18:05'},{id:'S6',t:'18:12'},{id:'S2',t:'18:20'}],days:[1,2,3,4,5]},
-  ]},
-];
+    // 校內路線：轉換為前端格式
+    SCHOOL_ROUTES = data.school_routes
+      .filter(r=>r.active)
+      .map(r=>({
+        id: r.id,
+        type: 'school',
+        zh: r.name_zh,
+        en: r.name_en,
+        url: r.route_url || '',
+        note: r.note || '',
+        trips: r.trips.map(t=>({
+          id: t.id,
+          days: [...t.days].map(Number),
+          stops: t.stops.map(s=>({ id: s.id, t: s.t }))
+        }))
+      }));
 
-const BUS_MOCK=[
-  {routeNo:'5065',dirIdx:0,stops:[{id:'S2',t:'07:20'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'5065',dirIdx:0,stops:[{id:'S2',t:'09:10'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'5065',dirIdx:0,stops:[{id:'S2',t:'13:00'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'5065',dirIdx:0,stops:[{id:'S2',t:'17:30'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'5065',dirIdx:1,stops:[{id:'S4',t:'07:50'},{id:'S2',t:'07:58'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'5065',dirIdx:1,stops:[{id:'S4',t:'12:10'},{id:'S2',t:'12:18'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'202',dirIdx:0,stops:[{id:'S3',t:'07:40'}],days:[1,2,3,4,5]},
-  {routeNo:'202',dirIdx:0,stops:[{id:'S3',t:'12:30'}],days:[1,2,3,4,5]},
-  {routeNo:'202',dirIdx:1,stops:[{id:'S3',t:'08:10'}],days:[1,2,3,4,5]},
-  {routeNo:'202',dirIdx:1,stops:[{id:'S3',t:'17:40'}],days:[1,2,3,4,5]},
-  {routeNo:'5057A',dirIdx:0,stops:[{id:'S4',t:'08:00'},{id:'S3',t:'08:12'}],days:[1,2,3,4,5]},
-  {routeNo:'5057A',dirIdx:0,stops:[{id:'S4',t:'17:00'},{id:'S3',t:'17:12'}],days:[1,2,3,4,5]},
-  {routeNo:'966',dirIdx:0,stops:[{id:'S9',t:'07:30'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'966',dirIdx:0,stops:[{id:'S9',t:'09:00'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'966',dirIdx:0,stops:[{id:'S9',t:'12:30'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'966',dirIdx:0,stops:[{id:'S9',t:'17:00'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'966',dirIdx:1,stops:[{id:'S9',t:'08:00'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'966',dirIdx:1,stops:[{id:'S9',t:'18:00'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'967',dirIdx:0,stops:[{id:'S2',t:'07:10'},{id:'S3',t:'07:22'},{id:'S9',t:'07:28'}],days:[1,2,3,4,5]},
-  {routeNo:'967',dirIdx:0,stops:[{id:'S2',t:'08:40'},{id:'S3',t:'08:52'},{id:'S9',t:'08:58'}],days:[1,2,3,4,5]},
-  {routeNo:'967',dirIdx:1,stops:[{id:'S9',t:'07:50'},{id:'S3',t:'07:56'},{id:'S2',t:'08:08'}],days:[1,2,3,4,5]},
-  {routeNo:'967',dirIdx:1,stops:[{id:'S9',t:'17:30'},{id:'S3',t:'17:36'},{id:'S2',t:'17:48'}],days:[1,2,3,4,5]},
-  {routeNo:'603',dirIdx:0,stops:[{id:'S2',t:'07:00'},{id:'S3',t:'07:12'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'603',dirIdx:0,stops:[{id:'S2',t:'08:30'},{id:'S3',t:'08:42'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'603',dirIdx:0,stops:[{id:'S2',t:'12:00'},{id:'S3',t:'12:12'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'603',dirIdx:0,stops:[{id:'S2',t:'17:00'},{id:'S3',t:'17:12'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'603',dirIdx:1,stops:[{id:'S3',t:'07:30'},{id:'S2',t:'07:42'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'603',dirIdx:1,stops:[{id:'S3',t:'13:00'},{id:'S2',t:'13:12'}],days:[1,2,3,4,5,6,7]},
-  {routeNo:'603',dirIdx:1,stops:[{id:'S3',t:'18:00'},{id:'S2',t:'18:12'}],days:[1,2,3,4,5,6,7]},
-];
+    // 公車路線：轉換為前端格式
+    BUS_ROUTES = data.bus_routes.map(r=>({
+      routeNo:      r.route_no,
+      operator:     r.operator_zh,
+      operatorEn:   r.operator_en,
+      zh:           `${r.operator_zh} ${r.route_no}`,
+      en:           `${r.operator_en} ${r.route_no}`,
+      url:          r.route_url || '',
+      note:         r.note || '',
+      tdxCity:      r.tdx_city,
+      tdxRouteName: r.tdx_route_name,
+      directions: r.directions.map(d=>({
+        dir:     d.dir,
+        zh:      d.desc_zh,
+        en:      d.desc_en,
+        stops:   d.stops.map(s=>s.id),
+        tdxStopNames: d.stops.map(s=>s.tdx_stop_name)
+      }))
+    }));
 
-function busInfoUrl(routeNo, url){
-  // 優先使用路線自訂 URL，若無則用預設格式
-  if(url) return url;
-  return `https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=${routeNo}`;
+    DATA_LOADED = true;
+    DATA_ERROR  = false;
+  } catch(e) {
+    console.error('[loadSchedule] Error:', e);
+    DATA_LOADED = false;
+    DATA_ERROR  = true;
+  }
 }
-function sn(id){const s=ALL_STOPS.find(x=>x.id===id);if(!s)return id;return L.cur==='zh'?s.zh:s.en;}
+
+function sn(id){
+  const s=ALL_STOPS.find(x=>x.id===id);
+  if(!s) return id;
+  return L.cur==='zh'?s.zh:s.en;
+}
 function toMin(t){if(!t)return 9999;const[h,m]=t.split(':').map(Number);return h*60+m;}
 function nm(){const n=new Date();return n.getHours()*60+n.getMinutes();}
 function dow(){const d=new Date().getDay();return d===0?7:d;}
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 
-function getMockBusTripsForStop(stopId){
-  const n=nm(),d=dow();
-  return BUS_MOCK.filter(m=>{
-    if(!m.days.includes(d))return false;
-    const idx=m.stops.findIndex(s=>s.id===stopId);
-    if(idx===-1)return false;
-    return toMin(m.stops[idx].t)>=n;
-  }).map(m=>{
-    const route=BUS_ROUTES.find(r=>r.routeNo===m.routeNo);
-    const dir=route.directions[m.dirIdx];
-    const idx=m.stops.findIndex(s=>s.id===stopId);
-    return {routeNo:m.routeNo,route,dir,stopId,arrivalTime:m.stops[idx].t,isLive:false,stops:m.stops};
-  }).sort((a,b)=>toMin(a.arrivalTime)-toMin(b.arrivalTime));
-}
+// 公車 Mock 已移除，TDX 異常時回傳空陣列並由前台顯示警示
+// getMockBusTripsForStop 已移除（資料來自 Supabase）
 
-function getMockBusTripsForRoute(fromId,toId,dowVal,afterMin){
-  return BUS_MOCK.filter(m=>{
-    if(!m.days.includes(dowVal))return false;
-    const ids=m.stops.map(s=>s.id);
-    const fi=ids.indexOf(fromId),ti=ids.indexOf(toId);
-    if(fi===-1||ti===-1||fi>=ti)return false;
-    return toMin(m.stops[fi].t)>=afterMin;
-  }).map(m=>{
-    const route=BUS_ROUTES.find(r=>r.routeNo===m.routeNo);
-    const dir=route.directions[m.dirIdx];
-    const ids=m.stops.map(s=>s.id);
-    const fi=ids.indexOf(fromId),ti=ids.indexOf(toId);
-    return {routeNo:m.routeNo,route,dir,depTime:m.stops[fi].t,arrTime:m.stops[ti].t,isLive:false,stops:m.stops,fi,ti};
-  }).sort((a,b)=>toMin(a.depTime)-toMin(b.depTime));
-}
+// getMockBusTripsForRoute 已移除（資料來自 Supabase）
+
 
 // 將 TDX 到站資料轉換為系統格式
 // 支援兩種格式：EstimateTime（秒）和 NextBusTime（絕對時間）
@@ -586,11 +535,26 @@ async function cachedFetch(url){
   return data;
 }
 
+// 從 BUS_ROUTES 動態建立 TDX 站牌名稱對照表
+function getStopMap(){
+  const map = {};
+  BUS_ROUTES.forEach(route => {
+    route.directions.forEach((dir, di) => {
+      dir.stops.forEach((stopId, si) => {
+        const tdxName = dir.tdxStopNames?.[si];
+        if(tdxName && stopId) map[tdxName] = stopId;
+      });
+    });
+  });
+  return map;
+}
+
 async function getBusTripsForStop(sid){
   try {
-    if(!TDX_CONFIG.ENABLED) return getMockBusTripsForStop(sid);
+    if(!TDX_CONFIG.ENABLED || !DATA_LOADED) return [];
+    const STOP_MAP = getStopMap();
     const tdxName = Object.entries(STOP_MAP).find(([k,v])=>v===sid)?.[0];
-    if(!tdxName) return getMockBusTripsForStop(sid);
+    if(!tdxName) return []; // 此站無公車路線
     const relevantRoutes = BUS_ROUTES.filter(r=>r.directions.some(d=>d.stops.includes(sid)));
     if(!relevantRoutes.length) return [];
 
@@ -626,7 +590,7 @@ async function getBusTripsForStop(sid){
     return results.sort((a,b)=>a.estSeconds-b.estSeconds);
   } catch(e) {
     console.error('getBusTripsForStop error:', e);
-    return getMockBusTripsForStop(sid);
+    return [{ isError: true, errorMsg: e.message }];
   }
 }
 async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
@@ -639,6 +603,7 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
         const fi = dir.stops.indexOf(fromId);
         const ti = dir.stops.indexOf(toId);
         if(fi===-1||ti===-1||fi>=ti) continue;
+        const STOP_MAP = getStopMap();
         const fromTdxName = Object.entries(STOP_MAP).find(([k,v])=>v===fromId)?.[0];
         if(!fromTdxName) continue;
         const res = await fetch(`/api/tdx-bus?city=${encodeURIComponent(route.tdxCity)}&stop=${encodeURIComponent(fromTdxName)}`);
@@ -661,7 +626,7 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
     return results.sort((a,b)=>a.estSeconds-b.estSeconds);
   } catch(e) {
     console.error('getBusTripsForRoute error:', e);
-    return getMockBusTripsForRoute(fromId,toId,dowVal,afterMin);
+    return [{ isError: true, errorMsg: e.message }];
   }
 }
 
@@ -694,7 +659,10 @@ async function renderSR(){
     if(toMin(trip.stops[idx].t)<n)return;
     schoolRes.push({kind:'school',r,trip,idx});
   }));
-  const busRes=(await getBusTripsForStop(sel)).map(x=>({kind:'bus',...x}));
+  const rawBusRes = await getBusTripsForStop(sel);
+  // 過濾掉錯誤標記，顯示公車暫時無法取得的提示
+  const busError = rawBusRes.some(x=>x.isError);
+  const busRes = rawBusRes.filter(x=>!x.isError).map(x=>({kind:'bus',...x}));
   const all=[...schoolRes,...busRes].sort((a,b)=>{
     const ta=a.kind==='school'?toMin(a.trip.stops[a.idx].t):toMin(a.arrivalTime);
     const tb=b.kind==='school'?toMin(b.trip.stops[b.idx].t):toMin(b.arrivalTime);
@@ -713,7 +681,7 @@ async function renderSR(){
   let html=`<p class="sec-lbl">${zh?'停靠':'STOPS AT'} ${slbl} — ${limited.length}${all.length>MAX?' / '+all.length:''} ${zh?'班':'TRIP(S)'}</p>`;
   html+=limited.map(item=>item.kind==='school'?buildSchoolCard(item.r,item.trip,null,null,sel):buildBusCard(item,sel,null,null)).join('');
   if(all.length>MAX)html+=`<p class="limit-note">${zh?`僅顯示最近 ${MAX} 班`:`Showing next ${MAX} trips only`}</p>`;
-  if(!TDX_CONFIG.ENABLED)html+=`<p class="limit-note">${zh?'公車資料為模擬資料':'Bus data is mock'}</p>`;
+  if(busError) html+=`<p class="limit-note" style="color:#ba7517;">⚠️ ${zh?'部分公車即時資訊暫時無法取得':'Some bus real-time data temporarily unavailable'}</p>`;
   area.innerHTML=html;
   } catch(e) {
     console.error('renderSR 錯誤:', e);
@@ -756,7 +724,9 @@ async function doSearch(){
     if(toMin(trip.stops[fi].t)<n)return;
     schoolRes.push({kind:'school',r,trip,fi,ti});
   }));
-  const busRes=(await getBusTripsForRoute(from,to,d,n)).map(x=>({kind:'bus',...x}));
+  const rawBusSearch = await getBusTripsForRoute(from,to,d,n);
+  const busSearchError = rawBusSearch.some(x=>x.isError);
+  const busRes = rawBusSearch.filter(x=>!x.isError).map(x=>({kind:'bus',...x}));
   const all=[...schoolRes,...busRes].sort((a,b)=>{
     const ta=a.kind==='school'?toMin(a.trip.stops[a.fi].t):toMin(a.depTime);
     const tb=b.kind==='school'?toMin(b.trip.stops[b.fi].t):toMin(b.depTime);
@@ -773,7 +743,7 @@ async function doSearch(){
   let html=`<p class="sec-lbl">${limited.length}${all.length>MAX?' / '+all.length:''} ${zh?'班次':'TRIP(S) FOUND'}</p>`;
   html+=limited.map(item=>item.kind==='school'?buildSchoolCard(item.r,item.trip,item.fi,item.ti,null):buildBusCard(item,null,item.fi,item.ti)).join('');
   if(all.length>MAX)html+=`<p class="limit-note">${zh?`僅顯示最近 ${MAX} 班`:`Showing next ${MAX} trips only`}</p>`;
-  if(!TDX_CONFIG.ENABLED)html+=`<p class="limit-note">${zh?'公車資料為模擬資料':'Bus data is mock'}</p>`;
+  if(busSearchError) html+=`<p class="limit-note" style="color:#ba7517;">⚠️ ${zh?'部分公車即時資訊暫時無法取得':'Some bus real-time data temporarily unavailable'}</p>`;
   area.innerHTML=html;
   } catch(e) {
     console.error('doSearch 錯誤:', e);
@@ -907,12 +877,53 @@ function updateUI(){
   document.title=zh?'長庚科技大學校車查詢 | CGUST Bus Query':'CGUST Bus Query System';
 }
 
-function init(){
+// ── 全域載入狀態 ─────────────────────────────────────────────
+function showGlobalLoading(show){
+  const zh = L.cur==='zh';
+  let el = document.getElementById('global-loading');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'global-loading';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(255,255,255,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9000;font-family:inherit;';
+    el.innerHTML = `<div style="width:48px;height:48px;border:4px solid #FCEEE8;border-top-color:#C4520A;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:1rem;"></div>
+      <p style="color:#C4520A;font-weight:600;font-size:1rem;">${zh?'載入班表資料中…':'Loading schedule…'}</p>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
+    document.body.appendChild(el);
+  }
+  el.style.display = show ? 'flex' : 'none';
+}
+
+function showGlobalError(){
+  const zh = L.cur==='zh';
+  const main = document.getElementById('main-content');
+  if(main) main.innerHTML = `
+    <div style="max-width:500px;margin:3rem auto;padding:2rem;background:white;border-radius:14px;border:.5px solid #E8E0D5;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,.07);">
+      <div style="font-size:2.5rem;margin-bottom:1rem;">⚠️</div>
+      <p style="font-size:1rem;font-weight:600;color:#2C2C2A;margin-bottom:.5rem;">${zh?'班表資料載入失敗':'Failed to load schedule'}</p>
+      <p style="font-size:.88rem;color:#5F5E5A;margin-bottom:1.5rem;">${zh?'請重新整理頁面，或稍後再試':'Please refresh the page or try again later'}</p>
+      <button onclick="location.reload()" style="padding:10px 24px;background:#C4520A;color:white;border:none;border-radius:10px;font-size:.95rem;cursor:pointer;font-weight:600;">
+        ${zh?'重新整理':'Refresh'}
+      </button>
+    </div>`;
+}
+
+async function init(){
   const todayVal=today();
   document.getElementById('id2').value=todayVal;
-  document.getElementById('id2').min=todayVal; // 禁止選擇過去日期
+  document.getElementById('id2').min=todayVal;
   const n=new Date();
   document.getElementById('itm').value=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+
+  // 先載入班表資料再渲染
+  showGlobalLoading(true);
+  await loadSchedule();
+  showGlobalLoading(false);
+
+  if(DATA_ERROR){
+    showGlobalError();
+    return;
+  }
+
   renderChips();populateSel();
 
   // 自動通知外層 iframe 調整高度（嵌入學校網站使用）
