@@ -1339,40 +1339,36 @@ function previewCSV(input){
   const file=input.files[0];
   if(!file) return;
   const reader=new FileReader();
-  reader.onload=e=>{
+  reader.onload=function(e){
     const area=document.getElementById('csv-preview');
     area.style.display='';
     try {
-      const text=e.target.result.replace(/^﻿/,''); // 移除 BOM
-      const lines=text.split(/?
-/).filter(l=>l.trim());
-      const headers=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim());
-      const rows=lines.slice(1).map(l=>{
-        // 處理引號包覆的欄位
+      const text=e.target.result.replace('\uFEFF','');
+      const lines=text.split('\n').map(function(l){return l.replace('\r','');}).filter(function(l){return l.trim();});
+      const headers=lines[0].split(',').map(function(h){return h.replace(/"/g,'').trim();});
+      const rows=lines.slice(1).map(function(l){
         const fields=[];
         let cur='',inQ=false;
-        for(const ch of l){
+        for(let ci=0;ci<l.length;ci++){
+          const ch=l[ci];
           if(ch==='"') inQ=!inQ;
           else if(ch===','&&!inQ){fields.push(cur);cur='';}
           else cur+=ch;
         }
         fields.push(cur);
-        return fields.map(f=>f.replace(/^"|"$/g,''));
-      }).filter(r=>r.length>1&&r[0]);
-
-      area.innerHTML=`
-        <div class="alert alert-ok">✅ 解析成功，共 ${rows.length} 筆班次。確認後點「匯入」將覆蓋現有資料。</div>
-        <div class="table-wrap" style="max-height:200px;overflow-y:auto;">
-          <table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-          <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td style="font-size:.78rem;">${c}</td>`).join('')}</tr>`).join('')}</tbody>
-          </table>
-        </div>
-        <div style="margin-top:.75rem;">
-          <button class="btn btn-danger" onclick="alert('匯入功能開發中，目前請使用後台直接管理班次。')">匯入（開發中）</button>
-          <button class="btn btn-outline" onclick="document.getElementById('csv-preview').style.display='none'" style="margin-left:.5rem;">取消</button>
-        </div>`;
-    } catch(e){
-      area.innerHTML=`<div class="alert alert-err">❌ CSV 解析失敗：${e.message}</div>`;
+        return fields.map(function(f){return f.replace(/"/g,'');});
+      }).filter(function(r){return r.length>1&&r[0];});
+      area.innerHTML='<div class="alert alert-ok">\u2705 \u89e3\u6790\u6210\u529f\uff0c\u5171 '+rows.length+' \u7b46\u672c\u6b21\u3002</div>'
+        +'<div class="table-wrap" style="max-height:200px;overflow-y:auto;">'
+        +'<table><thead><tr>'+headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead>'
+        +'<tbody>'+rows.map(function(r){return '<tr>'+r.map(function(c){return '<td style="font-size:.78rem;">'+c+'</td>';}).join('')+'</tr>';}).join('')+'</tbody>'
+        +'</table></div>'
+        +'<div style="margin-top:.75rem;">'
+        +'<button class="btn btn-danger" onclick="alert(\'\u5339\u5165\u529f\u80fd\u958b\u767c\u4e2d\uff0c\u76ee\u524d\u8acb\u4f7f\u7528\u5f8c\u53f0\u76f4\u63a5\u7ba1\u7406\u672c\u6b21\u3002\')">\u5339\u5165\uff08\u958b\u767c\u4e2d\uff09</button>'
+        +'<button class="btn btn-outline" onclick="document.getElementById(\'csv-preview\').style.display=\'none\'" style="margin-left:.5rem;">\u53d6\u6d88</button>'
+        +'</div>';
+    } catch(ex){
+      area.innerHTML='<div class="alert alert-err">\u274c CSV \u89e3\u6790\u5931\u6557\uff1a'+ex.message+'</div>';
     }
   };
   reader.readAsText(file,'UTF-8');
