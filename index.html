@@ -536,6 +536,11 @@ async function cachedFetch(url){
 }
 
 // 從 BUS_ROUTES 動態建立 TDX 站牌名稱對照表
+function busInfoUrl(routeNo, url){
+  if(url) return url;
+  return `https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=${encodeURIComponent(routeNo)}`;
+}
+
 function getStopMap(){
   const map = {};
   BUS_ROUTES.forEach(route => {

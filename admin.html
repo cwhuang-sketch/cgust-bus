@@ -218,7 +218,7 @@ tr:hover td{background:#fafafa;}
       <div class="panel" id="panel-csv">
         <div class="card">
           <div class="card-header"><span class="card-title">CSV 匯入／匯出</span></div>
-          <div class="alert alert-warn">⚠️ 目前 CSV 功能匯出的是瀏覽器暫存資料，完整資料移至 Supabase 後將自動更新。</div>
+          <div class="alert alert-ok">✅ 班表資料已儲存於 Supabase 資料庫，CSV 匯出為最新資料。</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
             <div style="border:1.5px dashed var(--bd);border-radius:var(--rs);padding:1.25rem;text-align:center;">
               <p style="font-weight:600;margin-bottom:.4rem;">📤 匯出班表</p>
@@ -1315,7 +1315,8 @@ function exportCSV(){
   SCHOOL_ROUTES.forEach(r=>{
     r.trips.forEach(trip=>{
       const days=trip.days||'';
-      const stops=trip.stops.map(s=>`${s.stop_id}:${s.arrive_time}`).join(' ');
+      // trip.stops 格式：{stop_id, arrive_time} 來自 Supabase
+      const stops=trip.stops.map(s=>`${s.stop_id||s.id}:${s.arrive_time||s.t}`).join(' ');
       rows.push([r.name_zh,r.name_en,'school',days,stops,r.route_url||'']);
     });
   });
@@ -1341,7 +1342,38 @@ function previewCSV(input){
   reader.onload=e=>{
     const area=document.getElementById('csv-preview');
     area.style.display='';
-    area.innerHTML=`<div class="alert alert-warn">CSV 預覽功能正在開發中，目前請使用後台直接管理班次。</div>`;
+    try {
+      const text=e.target.result.replace(/^﻿/,''); // 移除 BOM
+      const lines=text.split(/?
+/).filter(l=>l.trim());
+      const headers=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim());
+      const rows=lines.slice(1).map(l=>{
+        // 處理引號包覆的欄位
+        const fields=[];
+        let cur='',inQ=false;
+        for(const ch of l){
+          if(ch==='"') inQ=!inQ;
+          else if(ch===','&&!inQ){fields.push(cur);cur='';}
+          else cur+=ch;
+        }
+        fields.push(cur);
+        return fields.map(f=>f.replace(/^"|"$/g,''));
+      }).filter(r=>r.length>1&&r[0]);
+
+      area.innerHTML=`
+        <div class="alert alert-ok">✅ 解析成功，共 ${rows.length} 筆班次。確認後點「匯入」將覆蓋現有資料。</div>
+        <div class="table-wrap" style="max-height:200px;overflow-y:auto;">
+          <table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+          <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td style="font-size:.78rem;">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:.75rem;">
+          <button class="btn btn-danger" onclick="alert('匯入功能開發中，目前請使用後台直接管理班次。')">匯入（開發中）</button>
+          <button class="btn btn-outline" onclick="document.getElementById('csv-preview').style.display='none'" style="margin-left:.5rem;">取消</button>
+        </div>`;
+    } catch(e){
+      area.innerHTML=`<div class="alert alert-err">❌ CSV 解析失敗：${e.message}</div>`;
+    }
   };
   reader.readAsText(file,'UTF-8');
   input.value='';
