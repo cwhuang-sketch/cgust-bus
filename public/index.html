@@ -447,7 +447,7 @@ async function loadSchedule(){
         trips: r.trips.map(t=>({
           id: t.id,
           days: [...t.days].map(Number),
-          stops: t.stops.map(s=>({ id: s.id, t: s.t }))
+          stops: t.stops.map(s=>({ id: s.stop_id || s.id, t: s.arrive_time || s.t }))
         }))
       }));
 
@@ -463,11 +463,11 @@ async function loadSchedule(){
       tdxCity:      r.tdx_city,
       tdxRouteName: r.tdx_route_name,
       directions: r.directions.map(d=>({
-        dir:     d.dir,
-        zh:      d.desc_zh,
-        en:      d.desc_en,
-        stops:   d.stops.map(s=>s.id),
-        tdxStopNames: d.stops.map(s=>s.tdx_stop_name)
+        dir:   d.dir,
+        zh:    d.desc_zh,
+        en:    d.desc_en,
+        // stops 保留完整物件 {id, tdx_stop_name}，供 getStopMap 及路線比對使用
+        stops: d.stops.map(s=>({ id: s.id, tdx_stop_name: s.tdx_stop_name }))
       }))
     }));
 
@@ -536,13 +536,20 @@ async function cachedFetch(url){
 }
 
 // 從 BUS_ROUTES 動態建立 TDX 站牌名稱對照表
+function busInfoUrl(routeNo, url){
+  if(url) return url;
+  return `https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=${encodeURIComponent(routeNo)}`;
+}
+
 function getStopMap(){
   const map = {};
   BUS_ROUTES.forEach(route => {
-    route.directions.forEach((dir, di) => {
-      dir.stops.forEach((stopId, si) => {
-        const tdxName = dir.tdxStopNames?.[si];
-        if(tdxName && stopId) map[tdxName] = stopId;
+    (route.directions||[]).forEach(dir => {
+      (dir.stops||[]).forEach(stop => {
+        // stop 格式：{ id: 'S2', tdx_stop_name: '體育大學' }
+        if(stop.tdx_stop_name && stop.id){
+          map[stop.tdx_stop_name] = stop.id;
+        }
       });
     });
   });
@@ -555,7 +562,7 @@ async function getBusTripsForStop(sid){
     const STOP_MAP = getStopMap();
     const tdxName = Object.entries(STOP_MAP).find(([k,v])=>v===sid)?.[0];
     if(!tdxName) return []; // 此站無公車路線
-    const relevantRoutes = BUS_ROUTES.filter(r=>r.directions.some(d=>d.stops.includes(sid)));
+    const relevantRoutes = BUS_ROUTES.filter(r=>r.directions.some(d=>d.stops.some(s=>s.id===sid)));
     if(!relevantRoutes.length) return [];
 
     // 同一站可能跨兩個縣市（例如候車亭有桃園和新北的公車）
@@ -577,7 +584,7 @@ async function getBusTripsForStop(sid){
       if(!route) return;
       const dirIdx = a.Direction??0;
       const dir = route.directions[dirIdx];
-      if(!dir||!dir.stops.includes(sid)) return;
+      if(!dir||!dir.stops.some(s=>s.id===sid)) return;
       const parsed = parseTDXArrival(a);
       if(!parsed) return;
       results.push({
@@ -600,8 +607,8 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
     for(const route of BUS_ROUTES){
       for(let di=0;di<route.directions.length;di++){
         const dir = route.directions[di];
-        const fi = dir.stops.indexOf(fromId);
-        const ti = dir.stops.indexOf(toId);
+        const fi = dir.stops.findIndex(s=>s.id===fromId);
+        const ti = dir.stops.findIndex(s=>s.id===toId);
         if(fi===-1||ti===-1||fi>=ti) continue;
         const STOP_MAP = getStopMap();
         const fromTdxName = Object.entries(STOP_MAP).find(([k,v])=>v===fromId)?.[0];

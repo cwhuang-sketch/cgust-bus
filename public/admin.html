@@ -218,7 +218,7 @@ tr:hover td{background:#fafafa;}
       <div class="panel" id="panel-csv">
         <div class="card">
           <div class="card-header"><span class="card-title">CSV 匯入／匯出</span></div>
-          <div class="alert alert-warn">⚠️ 目前 CSV 功能匯出的是瀏覽器暫存資料，完整資料移至 Supabase 後將自動更新。</div>
+          <div class="alert alert-ok">✅ 班表資料已儲存於 Supabase 資料庫，CSV 匯出為最新資料。</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
             <div style="border:1.5px dashed var(--bd);border-radius:var(--rs);padding:1.25rem;text-align:center;">
               <p style="font-weight:600;margin-bottom:.4rem;">📤 匯出班表</p>
@@ -326,6 +326,13 @@ tr:hover td{background:#fafafa;}
         <input type="checkbox" id="rm-active" checked style="width:18px;height:18px;"> 啟用（停用時前台不顯示此路線班次）
       </label>
     </div>
+
+    <hr style="border:.5px solid var(--bd);margin:.75rem 0;">
+    <p style="font-size:.9rem;font-weight:600;margin-bottom:.4rem;">🕐 預設站點間隔時間（分鐘）</p>
+    <p style="font-size:.78rem;color:var(--gray);margin-bottom:.75rem;">設定後，新增班次時只需輸入發車時間，各站時間自動計算。特定班次仍可單獨微調。</p>
+    <div id="rm-intervals-grid" style="display:grid;grid-template-columns:1fr auto;gap:.4rem;align-items:center;"></div>
+    <p style="font-size:.74rem;color:var(--gray);margin-top:.4rem;">第一站間隔填 0（起站），其他站填與上一站的間隔分鐘數。</p>
+
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('route-modal')">取消</button>
       <button class="btn btn-primary" onclick="saveRoute()">儲存路線</button>
@@ -361,11 +368,13 @@ tr:hover td{background:#fafafa;}
 
     <div class="fg">
       <label>各站間隔時間（分鐘）與到站時間</label>
-      <div class="legend-row">
-        <span>🕐 = 輸入與上站間隔分鐘數，系統自動計算到站時間</span>
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem;">
+        <span style="font-size:.78rem;color:var(--gray);">🕐 輸入與上站間隔分鐘，系統自動計算到站時間</span>
+        <button class="btn btn-outline btn-sm" onclick="applyDefaultIntervals()" id="apply-default-btn" style="display:none;">套用路線預設間隔</button>
+        <span id="custom-indicator" style="font-size:.72rem;color:var(--orange);display:none;">✏️ 已手動調整</span>
       </div>
       <div id="tm-stops-grid"></div>
-      <p class="hint" style="margin-top:.4rem;">第一站時間等於發車時間，其後各站填入間隔分鐘即可自動計算。</p>
+      <p class="hint" style="margin-top:.4rem;">第一站時間等於發車時間，其後各站填入間隔分鐘即可自動計算。有路線預設間隔可一鍵套用，特殊班次可單獨微調。</p>
     </div>
 
     <p class="lerr" id="tm-err" style="margin-bottom:.5rem;min-height:1.2em;"></p>
@@ -673,11 +682,15 @@ async function loadSchoolRoutes(){
     SCHOOL_ROUTES = routesData.data||[];
     // Load trips for each route
     for(const route of SCHOOL_ROUTES){
+      // stop_intervals 已在 school_routes 資料表中
+      route.stop_intervals = route.stop_intervals || {};
       const tripsData = await api('GET',`/api/schedule-admin?resource=school_trips&route_id=${route.id}`);
       route.trips = tripsData.data||[];
       for(const trip of route.trips){
         const stopsData = await api('GET',`/api/schedule-admin?resource=trip_stops&trip_id=${trip.id}`);
         trip.stops = stopsData.data||[];
+        // custom_intervals 已在 school_trips 資料表中
+        trip.custom_intervals = trip.custom_intervals || null;
       }
     }
     renderSchoolRoutes();
@@ -716,9 +729,10 @@ function renderTripItem(route, trip){
   }).join(' → ');
   const daysStr = trip.days?[...trip.days].map(d=>['','一','二','三','四','五','六','日'][+d]).join(''):'';
   const depTime = trip.stops[0]?.arrive_time||'';
+  const isCustom = trip.custom_intervals && Object.keys(trip.custom_intervals).length>0;
   return `<div class="trip-item">
     <div class="trip-info">
-      <div class="trip-time">${depTime} 發車</div>
+      <div class="trip-time">${depTime} 發車 ${isCustom?'<span style="font-size:.72rem;color:var(--orange);margin-left:4px;">✏️ 已手動調整</span>':''}</div>
       <div class="trip-days">行駛日：週${daysStr}</div>
       <div class="trip-stops">${stopsStr}</div>
     </div>
@@ -726,6 +740,75 @@ function renderTripItem(route, trip){
       <button class="btn btn-outline btn-sm" onclick="deleteTrip('${trip.id}','${esc(depTime)}')">刪除</button>
     </div>
   </div>`;
+}
+
+
+// ── 路線間隔模板 ──────────────────────────────────────────────
+let currentRouteIntervals = {}; // { stop_id: minutes }
+
+function buildIntervalsGrid(intervals){
+  const grid = document.getElementById('rm-intervals-grid');
+  if(!grid) return;
+  grid.innerHTML = ALL_STOPS.filter(s=>s.active).map((s,i)=>`
+    <div style="padding:.35rem .5rem;background:var(--grl);border-radius:6px;font-size:.85rem;font-weight:500;">
+      ${i===0?'🚩':''} ${s.name_zh}
+    </div>
+    <div style="display:flex;align-items:center;gap:.3rem;">
+      ${i===0
+        ? '<span style="font-size:.78rem;color:var(--gray);">起站（發車點）</span>'
+        : `<input type="number" min="0" max="120" value="${intervals[s.id]||''}"
+             placeholder="分鐘" data-stop="${s.id}"
+             oninput="previewIntervalTime(this)"
+             style="width:65px;padding:5px 6px;border:1.5px solid var(--bd);border-radius:6px;font-size:.88rem;text-align:center;">
+           <span style="font-size:.72rem;color:var(--gray);">分</span>
+           <span class="interval-preview" id="ipv-${s.id}" style="font-size:.8rem;color:var(--orange);min-width:40px;"></span>`
+      }
+    </div>`).join('');
+}
+
+function previewIntervalTime(input){
+  // 顯示預覽時間（以 08:00 為例）
+  const baseMin = 8*60;
+  let cum = baseMin;
+  const activeStops = ALL_STOPS.filter(s=>s.active);
+  activeStops.forEach((s,i)=>{
+    if(i===0){ const el=document.getElementById(`ipv-${s.id}`); if(el) el.textContent=''; return; }
+    const inp = document.querySelector(`#rm-intervals-grid input[data-stop="${s.id}"]`);
+    const gap = parseInt(inp?.value)||0;
+    if(gap>0) cum+=gap;
+    const el = document.getElementById(`ipv-${s.id}`);
+    if(el) el.textContent = gap>0 ? `→ ${fromMin(cum)}` : '';
+  });
+}
+
+function getIntervalsFromGrid(){
+  const result = {};
+  document.querySelectorAll('#rm-intervals-grid input[data-stop]').forEach(inp=>{
+    const val = parseInt(inp.value);
+    if(val>0) result[inp.dataset.stop] = val;
+  });
+  return result;
+}
+
+function applyDefaultIntervals(){
+  const route = SCHOOL_ROUTES.find(r=>r.id===currentRouteId);
+  const intervals = route?.stop_intervals || {};
+  if(!Object.keys(intervals).length){
+    document.getElementById('apply-default-btn').title='此路線尚未設定預設間隔';
+    return;
+  }
+  // 填入各站間隔
+  const activeStops = ALL_STOPS.filter(s=>s.active);
+  activeStops.forEach((s,i)=>{
+    if(i===0) return;
+    const grid = document.querySelector(`.stop-time-grid[data-stop="${s.id}"]`);
+    const input = grid?.querySelector('input[type=number]');
+    if(input && intervals[s.id]){
+      input.value = intervals[s.id];
+    }
+  });
+  calcTimes();
+  document.getElementById('custom-indicator').style.display='none';
 }
 
 function openRouteModal(id){
@@ -737,6 +820,9 @@ function openRouteModal(id){
   document.getElementById('rm-url').value = r?.route_url||'';
   document.getElementById('rm-note').value = r?.note||'';
   document.getElementById('rm-active').checked = r?.active!==false;
+  // 建立間隔設定 grid
+  const intervals = r?.stop_intervals || {};
+  buildIntervalsGrid(intervals);
   openModal('route-modal');
 }
 
@@ -747,7 +833,8 @@ async function saveRoute(){
     name_en:document.getElementById('rm-en').value.trim(),
     route_url:document.getElementById('rm-url').value.trim(),
     note:document.getElementById('rm-note').value.trim(),
-    active:document.getElementById('rm-active').checked
+    active:document.getElementById('rm-active').checked,
+    stop_intervals: getIntervalsFromGrid()
   };
   if(!body.name_zh||!body.name_en){ alert('請填寫路線名稱'); return; }
   try {
@@ -764,7 +851,7 @@ let currentRouteId='';
 function openTripModal(routeId){
   currentRouteId=routeId;
   document.getElementById('tm-route-id').value=routeId;
-  document.getElementById('tm-modal-title') && (document.getElementById('tm-modal-title').textContent='新增班次');
+  document.getElementById('trip-modal-title').textContent='新增班次';
   document.getElementById('tm-depart').value='';
   document.getElementById('tm-err').textContent='';
   // Reset days to Mon-Fri
@@ -772,6 +859,13 @@ function openTripModal(routeId){
     const d=+c.dataset.d; c.classList.toggle('on',[1,2,3,4,5].includes(d));
   });
   buildStopsGrid();
+  // 檢查是否有預設間隔
+  const route = SCHOOL_ROUTES.find(r=>r.id===routeId);
+  const hasIntervals = route?.stop_intervals && Object.keys(route.stop_intervals).length>0;
+  const applyBtn = document.getElementById('apply-default-btn');
+  const customInd = document.getElementById('custom-indicator');
+  if(applyBtn){ applyBtn.style.display = hasIntervals?'':'none'; applyBtn.title=''; }
+  if(customInd) customInd.style.display='none';
   openModal('trip-modal');
 }
 
@@ -809,6 +903,22 @@ function calcTimes(){
     if(gap>0) cumMin+=gap;
     el.textContent=gap>0?fromMin(cumMin):'—';
   });
+  // 若有任何站點間隔與路線預設不同，顯示「已手動調整」標記
+  const route = SCHOOL_ROUTES.find(r=>r.id===currentRouteId);
+  const defaults = route?.stop_intervals||{};
+  const hasDefaults = Object.keys(defaults).length>0;
+  if(hasDefaults){
+    const activeStops = ALL_STOPS.filter(s=>s.active);
+    const isCustom = activeStops.some((s,i)=>{
+      if(i===0) return false;
+      const grid=document.querySelector(`.stop-time-grid[data-stop="${s.id}"]`);
+      const input=grid?.querySelector('input[type=number]');
+      const val=parseInt(input?.value)||0;
+      return val>0 && val !== (defaults[s.id]||0);
+    });
+    const ind=document.getElementById('custom-indicator');
+    if(ind) ind.style.display=isCustom?'':'none';
+  }
 }
 
 function toggleDay(el){ el.classList.toggle('on'); }
@@ -844,8 +954,25 @@ async function saveTrip(){
   if(tripStops.length<2){ errEl.textContent='請至少填寫2個站點的間隔時間'; return; }
 
   try {
+    // 記錄是否有手動調整間隔（與路線預設不同）
+    const route = SCHOOL_ROUTES.find(r=>r.id===routeId);
+    const defaults = route?.stop_intervals||{};
+    const customIntervals = {};
+    const activeStops = ALL_STOPS.filter(s=>s.active);
+    activeStops.forEach((s,i)=>{
+      if(i===0) return;
+      const grid=document.querySelector(`.stop-time-grid[data-stop="${s.id}"]`);
+      const input=grid?.querySelector('input[type=number]');
+      const val=parseInt(input?.value)||0;
+      if(val>0 && val !== (defaults[s.id]||0)) customIntervals[s.id]=val;
+    });
+    const hasCustom = Object.keys(customIntervals).length>0;
+
     // Create trip
-    const tripData=await api('POST','/api/schedule-admin?resource=school_trips',{route_id:routeId,days,sort_order:0});
+    const tripData=await api('POST','/api/schedule-admin?resource=school_trips',{
+      route_id:routeId,days,sort_order:0,
+      custom_intervals: hasCustom ? customIntervals : null
+    });
     const tripId=tripData.data?.id;
     if(!tripId) throw new Error('建立班次失敗');
     // Create trip stops
@@ -1188,7 +1315,8 @@ function exportCSV(){
   SCHOOL_ROUTES.forEach(r=>{
     r.trips.forEach(trip=>{
       const days=trip.days||'';
-      const stops=trip.stops.map(s=>`${s.stop_id}:${s.arrive_time}`).join(' ');
+      // trip.stops 格式：{stop_id, arrive_time} 來自 Supabase
+      const stops=trip.stops.map(s=>`${s.stop_id||s.id}:${s.arrive_time||s.t}`).join(' ');
       rows.push([r.name_zh,r.name_en,'school',days,stops,r.route_url||'']);
     });
   });
@@ -1214,7 +1342,38 @@ function previewCSV(input){
   reader.onload=e=>{
     const area=document.getElementById('csv-preview');
     area.style.display='';
-    area.innerHTML=`<div class="alert alert-warn">CSV 預覽功能正在開發中，目前請使用後台直接管理班次。</div>`;
+    try {
+      const text=e.target.result.replace(/^﻿/,''); // 移除 BOM
+      const lines=text.split(/?
+/).filter(l=>l.trim());
+      const headers=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim());
+      const rows=lines.slice(1).map(l=>{
+        // 處理引號包覆的欄位
+        const fields=[];
+        let cur='',inQ=false;
+        for(const ch of l){
+          if(ch==='"') inQ=!inQ;
+          else if(ch===','&&!inQ){fields.push(cur);cur='';}
+          else cur+=ch;
+        }
+        fields.push(cur);
+        return fields.map(f=>f.replace(/^"|"$/g,''));
+      }).filter(r=>r.length>1&&r[0]);
+
+      area.innerHTML=`
+        <div class="alert alert-ok">✅ 解析成功，共 ${rows.length} 筆班次。確認後點「匯入」將覆蓋現有資料。</div>
+        <div class="table-wrap" style="max-height:200px;overflow-y:auto;">
+          <table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+          <tbody>${rows.map(r=>`<tr>${r.map(c=>`<td style="font-size:.78rem;">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>
+        </div>
+        <div style="margin-top:.75rem;">
+          <button class="btn btn-danger" onclick="alert('匯入功能開發中，目前請使用後台直接管理班次。')">匯入（開發中）</button>
+          <button class="btn btn-outline" onclick="document.getElementById('csv-preview').style.display='none'" style="margin-left:.5rem;">取消</button>
+        </div>`;
+    } catch(e){
+      area.innerHTML=`<div class="alert alert-err">❌ CSV 解析失敗：${e.message}</div>`;
+    }
   };
   reader.readAsText(file,'UTF-8');
   input.value='';
