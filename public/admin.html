@@ -117,6 +117,28 @@ tr:hover td{background:#fafafa;}
 .pw-msg.ok{color:var(--green);}
 .pw-msg.err{color:var(--danger);}
 
+.interval-row{
+  display:grid;grid-template-columns:1fr auto auto;
+  gap:.4rem;align-items:center;margin-bottom:.35rem;
+}
+.interval-row .stop-name{
+  padding:.35rem .6rem;background:var(--grl);
+  border-radius:6px;font-size:.85rem;font-weight:500;
+}
+.interval-row input[type=number]{
+  width:65px;padding:5px 6px;
+  border:1.5px solid var(--bd);border-radius:6px;
+  font-size:.88rem;text-align:center;
+}
+.interval-row .time-preview{
+  font-size:.82rem;font-weight:600;
+  color:var(--orange);min-width:48px;text-align:center;
+}
+.batch-preview-row td{
+  padding:5px 8px;border-bottom:.5px solid var(--bd);
+}
+.batch-preview-row:last-child td{border-bottom:none;}
+.batch-preview-row:hover td{background:#fafafa;}
 /* ── Tag ── */
 .tag{display:inline-block;font-size:.7rem;padding:1px 7px;border-radius:8px;background:var(--ol);color:var(--orange);font-weight:600;margin-left:4px;}
 
@@ -340,15 +362,15 @@ tr:hover td{background:#fafafa;}
   </div>
 </div>
 
-<!-- 校車班次 Modal（智慧輸入）-->
+<!-- 校車班次 Modal（批次輸入）-->
 <div class="modal-overlay" id="trip-modal" role="dialog" aria-modal="true">
-  <div class="modal" style="width:640px;">
-    <h3 id="trip-modal-title">新增班次</h3>
+  <div class="modal" style="width:700px;">
+    <h3 id="trip-modal-title">批次新增班次</h3>
     <input type="hidden" id="tm-route-id">
 
-    <!-- 行駛日 -->
+    <!-- Step 1: 行駛日 -->
     <div class="fg">
-      <label>行駛日 <span style="color:var(--danger);">*</span></label>
+      <label>① 行駛日 <span style="color:var(--danger);">*</span></label>
       <div class="days-wrap" id="tm-days">
         <span class="day-chip on" data-d="1" onclick="toggleDay(this)">一</span>
         <span class="day-chip on" data-d="2" onclick="toggleDay(this)">二</span>
@@ -360,27 +382,84 @@ tr:hover td{background:#fafafa;}
       </div>
     </div>
 
-    <!-- 智慧時刻設定 -->
+    <!-- Step 2: 各站間隔 -->
     <div class="fg">
-      <label>發車時間（第一站）<span style="color:var(--danger);">*</span></label>
-      <input type="time" id="tm-depart" oninput="calcTimes()" style="max-width:160px;">
-    </div>
-
-    <div class="fg">
-      <label>各站間隔時間（分鐘）與到站時間</label>
-      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem;">
-        <span style="font-size:.78rem;color:var(--gray);">🕐 輸入與上站間隔分鐘，系統自動計算到站時間</span>
+      <label>② 各站間隔時間（分鐘）</label>
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap;">
         <button class="btn btn-outline btn-sm" onclick="applyDefaultIntervals()" id="apply-default-btn" style="display:none;">套用路線預設間隔</button>
-        <span id="custom-indicator" style="font-size:.72rem;color:var(--orange);display:none;">✏️ 已手動調整</span>
+        <span style="font-size:.75rem;color:var(--gray);">設定後所有班次的各站時間將自動推算</span>
       </div>
-      <div id="tm-stops-grid"></div>
-      <p class="hint" style="margin-top:.4rem;">第一站時間等於發車時間，其後各站填入間隔分鐘即可自動計算。有路線預設間隔可一鍵套用，特殊班次可單獨微調。</p>
+      <div id="tm-intervals-grid"></div>
     </div>
 
-    <p class="lerr" id="tm-err" style="margin-bottom:.5rem;min-height:1.2em;"></p>
+    <!-- Step 3: 所有發車時間 -->
+    <div class="fg">
+      <label>③ 所有發車時間 <span style="color:var(--danger);">*</span></label>
+      <textarea id="tm-departs" rows="3"
+        placeholder="07:00, 08:00, 09:00, 12:00, 17:00, 19:00&#10;（逗號或換行分隔，可一次輸入多個）"
+        oninput="previewBatch()"
+        style="width:100%;padding:10px;border:1.5px solid var(--bd);border-radius:var(--rs);font-family:monospace;font-size:.9rem;resize:vertical;"></textarea>
+      <p class="hint">以逗號「,」或換行分隔，例如：07:00, 08:00, 09:00</p>
+    </div>
+
+    <!-- Step 4: 預覽批次結果 -->
+    <div id="tm-batch-preview" style="display:none;">
+      <label style="font-size:.85rem;font-weight:600;margin-bottom:.4rem;display:block;">④ 預覽（確認後儲存）</label>
+      <div style="max-height:280px;overflow-y:auto;border:1.5px solid var(--bd);border-radius:var(--rs);">
+        <table style="width:100%;border-collapse:collapse;font-size:.82rem;">
+          <thead id="tm-preview-head" style="position:sticky;top:0;background:var(--grl);"></thead>
+          <tbody id="tm-preview-body"></tbody>
+        </table>
+      </div>
+      <p style="font-size:.75rem;color:var(--gray);margin-top:.4rem;">
+        💡 儲存後可在班次列表點「個別編輯」微調特定班次時間
+      </p>
+    </div>
+
+    <p class="lerr" id="tm-err" role="alert" style="margin-bottom:.5rem;min-height:1.2em;"></p>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('trip-modal')">取消</button>
-      <button class="btn btn-primary" onclick="saveTrip()">儲存班次</button>
+      <button class="btn btn-outline" onclick="previewBatch()">預覽班次</button>
+      <button class="btn btn-primary" onclick="saveBatchTrips()">批次儲存全部班次</button>
+    </div>
+  </div>
+</div>
+
+<!-- 編輯單一班次 Modal -->
+<div class="modal-overlay" id="edit-trip-modal" role="dialog" aria-modal="true">
+  <div class="modal" style="width:580px;">
+    <h3>個別編輯班次</h3>
+    <input type="hidden" id="etm-trip-id">
+
+    <div class="fg">
+      <label>行駛日 <span style="color:var(--danger);">*</span></label>
+      <div class="days-wrap" id="etm-days">
+        <span class="day-chip" data-d="1" onclick="toggleDay(this)">一</span>
+        <span class="day-chip" data-d="2" onclick="toggleDay(this)">二</span>
+        <span class="day-chip" data-d="3" onclick="toggleDay(this)">三</span>
+        <span class="day-chip" data-d="4" onclick="toggleDay(this)">四</span>
+        <span class="day-chip" data-d="5" onclick="toggleDay(this)">五</span>
+        <span class="day-chip" data-d="6" onclick="toggleDay(this)">六</span>
+        <span class="day-chip" data-d="7" onclick="toggleDay(this)">日</span>
+      </div>
+    </div>
+
+    <div class="fg">
+      <label>各站到站時間 <span style="color:var(--danger);">*</span></label>
+      <p class="hint" style="margin-bottom:.5rem;">直接修改各站時間，起站時間即為發車時間。</p>
+      <div id="etm-stops-grid"></div>
+    </div>
+
+    <div class="fg" id="etm-custom-note" style="display:none;">
+      <div class="alert alert-warn" style="font-size:.82rem;">
+        ✏️ 此班次時間與路線預設間隔不同，已標記為「手動調整」。
+      </div>
+    </div>
+
+    <p class="lerr" id="etm-err" role="alert" style="margin-bottom:.5rem;min-height:1.2em;"></p>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('edit-trip-modal')">取消</button>
+      <button class="btn btn-primary" onclick="saveEditTrip()">儲存修改</button>
     </div>
   </div>
 </div>
@@ -737,9 +816,362 @@ function renderTripItem(route, trip){
       <div class="trip-stops">${stopsStr}</div>
     </div>
     <div class="actions">
-      <button class="btn btn-outline btn-sm" onclick="deleteTrip('${trip.id}','${esc(depTime)}')">刪除</button>
+      <button class="btn btn-outline btn-sm" onclick="openEditTrip('${trip.id}')">個別編輯</button>
+      <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" onclick="deleteTrip('${trip.id}','${esc(depTime)}')">刪除</button>
     </div>
   </div>`;
+}
+
+
+// ── 批次班次輸入 ──────────────────────────────────────────────
+
+// 建立間隔設定 grid（用於班次 Modal）
+function buildIntervalsInputGrid(){
+  const grid = document.getElementById('tm-intervals-grid');
+  if(!grid) return;
+  const route = SCHOOL_ROUTES.find(r=>r.id===currentRouteId);
+  const defaults = route?.stop_intervals||{};
+  const activeStops = ALL_STOPS.filter(s=>s.active);
+
+  grid.innerHTML = activeStops.map((s,i)=>`
+    <div class="interval-row" data-stop="${s.id}">
+      <div class="stop-name">${i===0?'🚩 ':''} ${esc(s.name_zh)}</div>
+      <div style="display:flex;align-items:center;gap:.3rem;">
+        ${i===0
+          ? '<span style="font-size:.78rem;color:var(--gray);">起站（發車點）</span>'
+          : `<span style="font-size:.75rem;color:var(--gray);">+</span>
+             <input type="number" min="0" max="120" value="${defaults[s.id]||''}"
+               placeholder="分" oninput="previewBatch()"
+               style="width:65px;padding:5px 6px;border:1.5px solid var(--bd);border-radius:6px;font-size:.88rem;text-align:center;">
+             <span style="font-size:.75rem;color:var(--gray);">分</span>`
+        }
+      </div>
+      <div class="time-preview" id="tip-${s.id}"></div>
+    </div>`).join('');
+}
+
+// 解析發車時間輸入（以逗號或換行分隔，支援全形逗號）
+function parseDepartures(raw){
+  var result=[];
+  var parts=[];
+  var cur='';
+  for(var ci=0;ci<raw.length;ci++){
+    var code=raw.charCodeAt(ci);
+    // 逗號(44), 換行(10), 回車(13), 全形逗號(65292)
+    if(code===44||code===10||code===13||code===65292){
+      if(cur.trim()) parts.push(cur.trim());
+      cur='';
+    } else {
+      cur+=raw[ci];
+    }
+  }
+  if(cur.trim()) parts.push(cur.trim());
+  for(var pi=0;pi<parts.length;pi++){
+    var t=parts[pi];
+    var colon=t.indexOf(':');
+    if(colon<1) continue;
+    var h=parseInt(t.substring(0,colon));
+    var m=parseInt(t.substring(colon+1));
+    if(isNaN(h)||isNaN(m)||h<0||h>23||m<0||m>59) continue;
+    result.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
+  }
+  return result.sort();
+}
+
+// 取得各站間隔設定
+function getIntervalMap(){
+  const map={};
+  document.querySelectorAll('#tm-intervals-grid .interval-row').forEach((row,i)=>{
+    if(i===0) return; // 起站
+    const stopId=row.dataset.stop;
+    const input=row.querySelector('input[type=number]');
+    const val=parseInt(input?.value)||0;
+    if(val>0) map[stopId]=val;
+  });
+  return map;
+}
+
+// 計算一個班次的各站時間
+function calcTripTimes(departTime, intervalMap){
+  const activeStops=ALL_STOPS.filter(s=>s.active);
+  let cumMin=toMin(departTime);
+  const result=[];
+  activeStops.forEach((s,i)=>{
+    if(i===0){
+      result.push({stop_id:s.id,arrive_time:departTime,seq:i+1});
+      return;
+    }
+    const gap=intervalMap[s.id]||0;
+    if(gap>0){
+      cumMin+=gap;
+      result.push({stop_id:s.id,arrive_time:fromMin(cumMin),seq:i+1});
+    }
+  });
+  return result;
+}
+
+// 預覽批次結果
+function previewBatch(){
+  const raw=document.getElementById('tm-departs').value;
+  const departures=parseDepartures(raw);
+  const intervalMap=getIntervalMap();
+  const activeStops=ALL_STOPS.filter(s=>s.active);
+  const errEl=document.getElementById('tm-err');
+
+  // 更新 tip 預覽（以第一個發車時間為例）
+  if(departures.length>0){
+    let cumMin=toMin(departures[0]);
+    activeStops.forEach((s,i)=>{
+      const el=document.getElementById('tip-'+s.id);
+      if(!el) return;
+      if(i===0){ el.textContent=departures[0]; return; }
+      const gap=intervalMap[s.id]||0;
+      if(gap>0){ cumMin+=gap; el.textContent=fromMin(cumMin); }
+      else el.textContent='—';
+    });
+  }
+
+  if(!departures.length){
+    document.getElementById('tm-batch-preview').style.display='none';
+    return;
+  }
+
+  // 建立預覽表格
+  const stopsInRoute=activeStops.filter(s=>
+    s.id===activeStops[0].id || intervalMap[s.id]>0
+  );
+
+  const head=document.getElementById('tm-preview-head');
+  const body=document.getElementById('tm-preview-body');
+
+  head.innerHTML='<tr>'
+    +'<th style="padding:6px 8px;font-size:.78rem;">發車時間</th>'
+    +stopsInRoute.map(s=>`<th style="padding:6px 8px;font-size:.78rem;">${esc(s.name_zh)}</th>`).join('')
+    +'</tr>';
+
+  body.innerHTML=departures.map(dep=>{
+    const times=calcTripTimes(dep,intervalMap);
+    const timeMap={};
+    times.forEach(t=>{ timeMap[t.stop_id]=t.arrive_time; });
+    return '<tr class="batch-preview-row">'
+      +`<td style="font-weight:700;color:var(--orange);">${dep}</td>`
+      +stopsInRoute.map(s=>`<td>${timeMap[s.id]||'—'}</td>`).join('')
+      +'</tr>';
+  }).join('');
+
+  document.getElementById('tm-batch-preview').style.display='';
+  errEl.textContent='';
+}
+
+
+// ── 編輯單一班次 ──────────────────────────────────────────────
+
+async function openEditTrip(tripId){
+  // 找到這個班次
+  let foundTrip = null;
+  let foundRoute = null;
+  for(const route of SCHOOL_ROUTES){
+    const trip = route.trips.find(t=>t.id===tripId);
+    if(trip){ foundTrip=trip; foundRoute=route; break; }
+  }
+  if(!foundTrip){ alert('找不到班次資料'); return; }
+
+  document.getElementById('etm-trip-id').value = tripId;
+
+  // 設定行駛日
+  const days = foundTrip.days||'';
+  document.querySelectorAll('#etm-days .day-chip').forEach(c=>{
+    c.classList.toggle('on', days.includes(c.dataset.d));
+  });
+
+  // 建立各站時間編輯 grid
+  const grid = document.getElementById('etm-stops-grid');
+  const stopMap = {};
+  (foundTrip.stops||[]).forEach(s=>{ stopMap[s.stop_id||s.id] = s.arrive_time||s.t; });
+
+  grid.innerHTML = ALL_STOPS.filter(s=>s.active).map((s,i)=>{
+    const currentTime = stopMap[s.id]||'';
+    return `<div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;margin-bottom:.4rem;">
+      <div style="padding:.35rem .6rem;background:var(--grl);border-radius:6px;font-size:.85rem;font-weight:500;">
+        ${i===0?'🚩 ':''}${esc(s.name_zh)}
+        <span style="font-size:.72rem;color:var(--gray);margin-left:.3rem;">${s.name_en}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:.3rem;">
+        <input type="time" value="${currentTime}"
+          data-stop="${s.id}" id="etm-time-${s.id}"
+          style="padding:6px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:.9rem;"
+          oninput="checkEditCustom()">
+        ${currentTime?'':'<span style="font-size:.72rem;color:var(--gray);">（本路線不停靠，可留空）</span>'}
+      </div>
+    </div>`;
+  }).join('');
+
+  // 檢查是否已是手動調整班次
+  const isCustom = foundTrip.custom_intervals && Object.keys(foundTrip.custom_intervals).length>0;
+  document.getElementById('etm-custom-note').style.display = isCustom?'':'none';
+  document.getElementById('etm-err').textContent='';
+
+  openModal('edit-trip-modal');
+}
+
+function checkEditCustom(){
+  // 比較目前輸入與路線預設間隔，決定是否顯示「手動調整」提示
+  const tripId = document.getElementById('etm-trip-id').value;
+  let foundRoute = null;
+  for(const route of SCHOOL_ROUTES){
+    if(route.trips.find(t=>t.id===tripId)){ foundRoute=route; break; }
+  }
+  const defaults = foundRoute?.stop_intervals||{};
+  if(!Object.keys(defaults).length) return;
+
+  // 取得第一站時間
+  const firstStop = ALL_STOPS.filter(s=>s.active)[0];
+  const firstEl = document.getElementById('etm-time-'+firstStop?.id);
+  if(!firstEl?.value) return;
+
+  let cumMin = toMin(firstEl.value);
+  let isCustom = false;
+  ALL_STOPS.filter(s=>s.active).forEach((s,i)=>{
+    if(i===0) return;
+    const el = document.getElementById('etm-time-'+s.id);
+    if(!el?.value) return;
+    const actualMin = toMin(el.value);
+    const gap = actualMin - cumMin;
+    cumMin = actualMin;
+    if(defaults[s.id] && gap !== defaults[s.id]) isCustom=true;
+  });
+  document.getElementById('etm-custom-note').style.display = isCustom?'':'none';
+}
+
+async function saveEditTrip(){
+  const tripId = document.getElementById('etm-trip-id').value;
+  const errEl  = document.getElementById('etm-err');
+  errEl.textContent='';
+
+  const days = [...document.querySelectorAll('#etm-days .day-chip.on')].map(c=>c.dataset.d).join('');
+  if(!days){ errEl.textContent='請選擇至少一個行駛日'; return; }
+
+  // 收集各站時間
+  const newStops = [];
+  let seq=1;
+  ALL_STOPS.filter(s=>s.active).forEach(s=>{
+    const el = document.getElementById('etm-time-'+s.id);
+    if(el?.value){
+      newStops.push({ stop_id:s.id, arrive_time:el.value, seq:seq++ });
+    }
+  });
+
+  if(newStops.length<2){ errEl.textContent='請至少填寫兩個站點的時間'; return; }
+
+  // 計算 custom_intervals（與路線預設比較）
+  let foundRoute = null;
+  for(const route of SCHOOL_ROUTES){
+    if(route.trips.find(t=>t.id===tripId)){ foundRoute=route; break; }
+  }
+  const defaults = foundRoute?.stop_intervals||{};
+  const customIntervals={};
+  let cumMin=toMin(newStops[0].arrive_time);
+  newStops.forEach((s,i)=>{
+    if(i===0) return;
+    const gap = toMin(s.arrive_time)-cumMin;
+    cumMin = toMin(s.arrive_time);
+    if(defaults[s.stop_id] && gap!==defaults[s.stop_id]) customIntervals[s.stop_id]=gap;
+  });
+  const hasCustom = Object.keys(customIntervals).length>0;
+
+  const btn = document.querySelector('#edit-trip-modal .btn-primary');
+  if(btn){ btn.disabled=true; btn.textContent='儲存中…'; }
+
+  try {
+    // 更新行駛日與 custom_intervals
+    await api('PUT',`/api/schedule-admin?resource=school_trips&id=${tripId}`,{
+      days,
+      custom_intervals: hasCustom ? customIntervals : null
+    });
+
+    // 刪除舊的 trip_stops，重新建立
+    const oldStops = await api('GET',`/api/schedule-admin?resource=trip_stops&trip_id=${tripId}`);
+    for(const s of oldStops.data||[]){
+      await api('DELETE',`/api/schedule-admin?resource=trip_stops&id=${s.id}`);
+    }
+    for(const s of newStops){
+      await api('POST','/api/schedule-admin?resource=trip_stops',{
+        trip_id:tripId, stop_id:s.stop_id,
+        arrive_time:s.arrive_time, seq:s.seq
+      });
+    }
+
+    closeModal('edit-trip-modal');
+    await loadSchoolRoutes();
+  } catch(e){
+    errEl.textContent='儲存失敗：'+e.message;
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='儲存修改'; }
+  }
+}
+
+// 批次儲存所有班次
+async function saveBatchTrips(){
+  const routeId=document.getElementById('tm-route-id').value;
+  const raw=document.getElementById('tm-departs').value;
+  const departures=parseDepartures(raw);
+  const intervalMap=getIntervalMap();
+  const errEl=document.getElementById('tm-err');
+  errEl.textContent='';
+
+  if(!departures.length){
+    errEl.textContent='請輸入至少一個發車時間（格式：07:00）';return;
+  }
+  const stopsCount=Object.keys(intervalMap).length;
+  if(!stopsCount){
+    errEl.textContent='請設定各站間隔時間（至少一個站點）';return;
+  }
+  const days=[...document.querySelectorAll('#tm-days .day-chip.on')].map(c=>c.dataset.d).join('');
+  if(!days){ errEl.textContent='請選擇至少一個行駛日';return; }
+
+  const btn=document.querySelector('#trip-modal .btn-primary');
+  if(btn){ btn.disabled=true; btn.textContent=`儲存中 (0/${departures.length})…`; }
+
+  try {
+    let saved=0;
+    for(const dep of departures){
+      const tripStops=calcTripTimes(dep,intervalMap);
+      if(tripStops.length<2) continue;
+
+      // 建立班次
+      const tripData=await api('POST','/api/schedule-admin?resource=school_trips',{
+        route_id:routeId, days, sort_order:toMin(dep),
+        custom_intervals:null
+      });
+      const tripId=tripData.data?.id;
+      if(!tripId) throw new Error('建立班次失敗');
+
+      // 建立各站時刻
+      for(const ts of tripStops){
+        await api('POST','/api/schedule-admin?resource=trip_stops',{
+          trip_id:tripId, stop_id:ts.stop_id,
+          arrive_time:ts.arrive_time, seq:ts.seq
+        });
+      }
+      saved++;
+      if(btn) btn.textContent=`儲存中 (${saved}/${departures.length})…`;
+    }
+
+    // 同步更新路線的 stop_intervals
+    const route=SCHOOL_ROUTES.find(r=>r.id===routeId);
+    if(route){
+      await api('PUT',`/api/schedule-admin?resource=school_routes&id=${routeId}`,{
+        stop_intervals: intervalMap
+      });
+    }
+
+    closeModal('trip-modal');
+    await loadSchoolRoutes();
+  } catch(e){
+    errEl.textContent='儲存失敗：'+e.message;
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='批次儲存全部班次'; }
+  }
 }
 
 
@@ -793,22 +1225,15 @@ function getIntervalsFromGrid(){
 function applyDefaultIntervals(){
   const route = SCHOOL_ROUTES.find(r=>r.id===currentRouteId);
   const intervals = route?.stop_intervals || {};
-  if(!Object.keys(intervals).length){
-    document.getElementById('apply-default-btn').title='此路線尚未設定預設間隔';
-    return;
-  }
-  // 填入各站間隔
-  const activeStops = ALL_STOPS.filter(s=>s.active);
-  activeStops.forEach((s,i)=>{
+  if(!Object.keys(intervals).length) return;
+  // 填入各站間隔到新介面的 grid
+  document.querySelectorAll('#tm-intervals-grid .interval-row').forEach((row,i)=>{
     if(i===0) return;
-    const grid = document.querySelector(`.stop-time-grid[data-stop="${s.id}"]`);
-    const input = grid?.querySelector('input[type=number]');
-    if(input && intervals[s.id]){
-      input.value = intervals[s.id];
-    }
+    const stopId=row.dataset.stop;
+    const input=row.querySelector('input[type=number]');
+    if(input && intervals[stopId]) input.value=intervals[stopId];
   });
-  calcTimes();
-  document.getElementById('custom-indicator').style.display='none';
+  previewBatch();
 }
 
 function openRouteModal(id){
@@ -851,21 +1276,25 @@ let currentRouteId='';
 function openTripModal(routeId){
   currentRouteId=routeId;
   document.getElementById('tm-route-id').value=routeId;
-  document.getElementById('trip-modal-title').textContent='新增班次';
-  document.getElementById('tm-depart').value='';
+  document.getElementById('trip-modal-title').textContent='批次新增班次';
+  document.getElementById('tm-departs').value='';
   document.getElementById('tm-err').textContent='';
+  document.getElementById('tm-batch-preview').style.display='none';
+
   // Reset days to Mon-Fri
   document.querySelectorAll('#tm-days .day-chip').forEach(c=>{
     const d=+c.dataset.d; c.classList.toggle('on',[1,2,3,4,5].includes(d));
   });
-  buildStopsGrid();
-  // 檢查是否有預設間隔
+
+  // 建立間隔輸入 grid
+  buildIntervalsInputGrid();
+
+  // 若路線有預設間隔，顯示套用按鈕
   const route = SCHOOL_ROUTES.find(r=>r.id===routeId);
   const hasIntervals = route?.stop_intervals && Object.keys(route.stop_intervals).length>0;
   const applyBtn = document.getElementById('apply-default-btn');
-  const customInd = document.getElementById('custom-indicator');
-  if(applyBtn){ applyBtn.style.display = hasIntervals?'':'none'; applyBtn.title=''; }
-  if(customInd) customInd.style.display='none';
+  if(applyBtn) applyBtn.style.display = hasIntervals?'inline-flex':'none';
+
   openModal('trip-modal');
 }
 
