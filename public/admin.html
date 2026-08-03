@@ -651,9 +651,12 @@ function startSession(user){
   document.getElementById('user-bar').innerHTML =
     `👤 <strong>${esc(user.username||user.user)}</strong> <span class="tag">${user.role==='admin'?'管理員':'編輯者'}</span>`;
   const isAdmin = user.role==='admin';
-  // 顯示/隱藏 admin-only 元素（nav-btn 和 label）
-  document.querySelectorAll('.admin-only').forEach(el=>{
-    el.style.display = isAdmin ? '' : 'none';
+  // 顯示/隱藏 admin-only 元素（明確設定 display 值，避免 CSS 覆蓋）
+  document.querySelectorAll('.nav-btn.admin-only').forEach(el=>{
+    el.style.display = isAdmin ? 'block' : 'none';
+  });
+  document.querySelectorAll('.sidebar-group-label.admin-only').forEach(el=>{
+    el.style.display = isAdmin ? 'block' : 'none';
   });
 
   let remaining = SESSION_MINUTES*60;
@@ -684,7 +687,9 @@ function switchPanel(name){
 // ── Load all data ─────────────────────────────────────────────
 async function loadAll(){
   await Promise.all([loadStops(), loadSchoolRoutes(), loadBusRoutes()]);
-  if(SESSION_USER?.role==='admin') await loadAccounts();
+  if(SESSION_USER?.role==='admin'){
+    await loadAccounts();
+  }
   checkTDXStatus();
 }
 
