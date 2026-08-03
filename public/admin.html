@@ -190,10 +190,10 @@ tr:hover td{background:#fafafa;}
         <button class="nav-btn" onclick="switchPanel('csv')" id="nav-csv"><span class="icon">📊</span>CSV 匯入匯出</button>
       </div>
       <div class="sidebar-group">
-        <div class="sidebar-group-label">系統設定</div>
+        <div class="sidebar-group-label admin-only" style="display:none;">系統設定</div>
+        <button class="nav-btn admin-only" onclick="switchPanel('accounts')" id="nav-accounts"><span class="icon">👥</span>帳號管理</button>
         <button class="nav-btn admin-only" onclick="switchPanel('stops')" id="nav-stops"><span class="icon">📍</span>站點管理</button>
         <button class="nav-btn admin-only" onclick="switchPanel('api')" id="nav-api"><span class="icon">🔌</span>API 設定</button>
-        <button class="nav-btn admin-only" onclick="switchPanel('accounts')" id="nav-accounts"><span class="icon">👥</span>帳號管理</button>
       </div>
       <div class="sidebar-group">
         <div class="sidebar-group-label">個人設定</div>
@@ -349,11 +349,8 @@ tr:hover td{background:#fafafa;}
       </label>
     </div>
 
-    <hr style="border:.5px solid var(--bd);margin:.75rem 0;">
-    <p style="font-size:.9rem;font-weight:600;margin-bottom:.4rem;">🕐 預設站點間隔時間（分鐘）</p>
-    <p style="font-size:.78rem;color:var(--gray);margin-bottom:.75rem;">設定後，新增班次時只需輸入發車時間，各站時間自動計算。特定班次仍可單獨微調。</p>
-    <div id="rm-intervals-grid" style="display:grid;grid-template-columns:1fr auto;gap:.4rem;align-items:center;"></div>
-    <p style="font-size:.74rem;color:var(--gray);margin-top:.4rem;">第一站間隔填 0（起站），其他站填與上一站的間隔分鐘數。</p>
+    
+
 
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('route-modal')">取消</button>
@@ -654,7 +651,10 @@ function startSession(user){
   document.getElementById('user-bar').innerHTML =
     `👤 <strong>${esc(user.username||user.user)}</strong> <span class="tag">${user.role==='admin'?'管理員':'編輯者'}</span>`;
   const isAdmin = user.role==='admin';
-  document.querySelectorAll('.nav-btn.admin-only').forEach(b=>b.style.display=isAdmin?'':'none');
+  // 顯示/隱藏 admin-only 元素（nav-btn 和 label）
+  document.querySelectorAll('.admin-only').forEach(el=>{
+    el.style.display = isAdmin ? '' : 'none';
+  });
 
   let remaining = SESSION_MINUTES*60;
   if(_activityHandler) ['click','keydown','mousemove','touchstart'].forEach(ev=>document.removeEventListener(ev,_activityHandler));
@@ -1245,9 +1245,6 @@ function openRouteModal(id){
   document.getElementById('rm-url').value = r?.route_url||'';
   document.getElementById('rm-note').value = r?.note||'';
   document.getElementById('rm-active').checked = r?.active!==false;
-  // 建立間隔設定 grid
-  const intervals = r?.stop_intervals || {};
-  buildIntervalsGrid(intervals);
   openModal('route-modal');
 }
 
@@ -1258,8 +1255,7 @@ async function saveRoute(){
     name_en:document.getElementById('rm-en').value.trim(),
     route_url:document.getElementById('rm-url').value.trim(),
     note:document.getElementById('rm-note').value.trim(),
-    active:document.getElementById('rm-active').checked,
-    stop_intervals: getIntervalsFromGrid()
+    active:document.getElementById('rm-active').checked
   };
   if(!body.name_zh||!body.name_en){ alert('請填寫路線名稱'); return; }
   try {
