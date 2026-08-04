@@ -675,7 +675,15 @@ function startSession(user){
 }
 
 // ── Navigation ────────────────────────────────────────────────
+// admin-only 頁面清單
+const ADMIN_ONLY_PANELS = ['accounts','stops','api'];
+
 function switchPanel(name){
+  // 非 admin 不得進入 admin-only 頁面
+  if(ADMIN_ONLY_PANELS.includes(name) && SESSION_USER?.role !== 'admin'){
+    console.warn('Access denied:', name);
+    return;
+  }
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   const panel=document.getElementById(`panel-${name}`);
