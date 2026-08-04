@@ -651,13 +651,17 @@ function startSession(user){
   document.getElementById('user-bar').innerHTML =
     `👤 <strong>${esc(user.username||user.user)}</strong> <span class="tag">${user.role==='admin'?'管理員':'編輯者'}</span>`;
   const isAdmin = user.role==='admin';
-  // 顯示/隱藏 admin-only 元素（明確設定 display 值，避免 CSS 覆蓋）
+  // 顯示/隱藏 admin-only 元素
   document.querySelectorAll('.nav-btn.admin-only').forEach(el=>{
     el.style.display = isAdmin ? 'block' : 'none';
   });
   document.querySelectorAll('.sidebar-group-label.admin-only').forEach(el=>{
     el.style.display = isAdmin ? 'block' : 'none';
   });
+  // API 設定只有 username=admin 才顯示
+  const isSuperAdmin = user.username === 'admin';
+  const apiBtn = document.getElementById('nav-api');
+  if(apiBtn) apiBtn.style.display = isSuperAdmin ? 'block' : 'none';
 
   let remaining = SESSION_MINUTES*60;
   if(_activityHandler) ['click','keydown','mousemove','touchstart'].forEach(ev=>document.removeEventListener(ev,_activityHandler));
@@ -675,12 +679,22 @@ function startSession(user){
 }
 
 // ── Navigation ────────────────────────────────────────────────
-// admin-only 頁面清單
-const ADMIN_ONLY_PANELS = ['accounts','stops','api'];
+// 頁面權限設定
+const ADMIN_ONLY_PANELS    = ['accounts','stops','api']; // 需 admin 角色
+const SUPERADMIN_ONLY_PANELS = ['api'];                  // 只有 username=admin 帳號
+
+function canViewPanel(name){
+  if(SUPERADMIN_ONLY_PANELS.includes(name)){
+    return SESSION_USER?.username === 'admin';
+  }
+  if(ADMIN_ONLY_PANELS.includes(name)){
+    return SESSION_USER?.role === 'admin';
+  }
+  return true;
+}
 
 function switchPanel(name){
-  // 非 admin 不得進入 admin-only 頁面
-  if(ADMIN_ONLY_PANELS.includes(name) && SESSION_USER?.role !== 'admin'){
+  if(!canViewPanel(name)){
     console.warn('Access denied:', name);
     return;
   }
