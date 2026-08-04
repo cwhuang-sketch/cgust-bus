@@ -658,10 +658,12 @@ function startSession(user){
   document.querySelectorAll('.sidebar-group-label.admin-only').forEach(el=>{
     el.style.display = isAdmin ? 'block' : 'none';
   });
-  // API 設定只有 username=admin 才顯示
+  // API 設定與帳號管理只有 username=admin 才顯示
   const isSuperAdmin = user.username === 'admin';
-  const apiBtn = document.getElementById('nav-api');
-  if(apiBtn) apiBtn.style.display = isSuperAdmin ? 'block' : 'none';
+  ['nav-api','nav-accounts'].forEach(id=>{
+    const btn = document.getElementById(id);
+    if(btn) btn.style.display = isSuperAdmin ? 'block' : 'none';
+  });
 
   let remaining = SESSION_MINUTES*60;
   if(_activityHandler) ['click','keydown','mousemove','touchstart'].forEach(ev=>document.removeEventListener(ev,_activityHandler));
@@ -680,8 +682,8 @@ function startSession(user){
 
 // ── Navigation ────────────────────────────────────────────────
 // 頁面權限設定
-const ADMIN_ONLY_PANELS    = ['accounts','stops','api']; // 需 admin 角色
-const SUPERADMIN_ONLY_PANELS = ['api'];                  // 只有 username=admin 帳號
+const ADMIN_ONLY_PANELS    = ['stops','api','accounts']; // 需 admin 角色
+const SUPERADMIN_ONLY_PANELS = ['api','accounts'];       // 只有 username=admin 帳號
 
 function canViewPanel(name){
   if(SUPERADMIN_ONLY_PANELS.includes(name)){
