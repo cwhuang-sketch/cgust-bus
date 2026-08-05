@@ -267,7 +267,7 @@ tr:hover td{background:#fafafa;}
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>代號</th><th>站名（中）</th><th>站名（英）</th><th>簡易模式</th><th>狀態</th><th>操作</th></tr></thead>
+              <thead><tr><th>排序</th><th>代號</th><th>站名（中）</th><th>站名（英）</th><th>簡易模式</th><th>狀態</th><th>操作</th></tr></thead>
               <tbody id="stops-tbody"></tbody>
             </table>
           </div>
@@ -729,7 +729,11 @@ async function loadStops(){
 function renderStops(){
   const tbody=document.getElementById('stops-tbody');
   if(!tbody) return;
-  tbody.innerHTML=ALL_STOPS.map(s=>`<tr>
+  tbody.innerHTML=ALL_STOPS.map((s,i)=>`<tr>
+    <td class="actions" style="white-space:nowrap;">
+      <button class="btn btn-outline btn-sm" style="padding:2px 8px;" title="上移" ${i===0?'disabled':''} onclick="moveStop('${esc(s.id)}',-1)">▲</button>
+      <button class="btn btn-outline btn-sm" style="padding:2px 8px;" title="下移" ${i===ALL_STOPS.length-1?'disabled':''} onclick="moveStop('${esc(s.id)}',1)">▼</button>
+    </td>
     <td style="font-family:monospace;">${esc(s.id)}</td>
     <td>${esc(s.name_zh)}</td>
     <td style="color:var(--gray);font-size:.82rem;">${esc(s.name_en)}</td>
@@ -738,8 +742,49 @@ function renderStops(){
     <td class="actions">
       <button class="btn btn-outline btn-sm" onclick="openStopModal('${esc(s.id)}')">編輯</button>
       <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" onclick="toggleStop('${esc(s.id)}',${!s.active})">${s.active?'停用':'啟用'}</button>
+      <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" onclick="deleteStop('${esc(s.id)}','${esc(s.name_zh)}')">刪除</button>
     </td>
   </tr>`).join('');
+}
+
+// 上下調整站點順序：交換後重新為整份清單編排連續的 sort_order，並只送出有變動的項目
+async function moveStop(id, dir){
+  const idx = ALL_STOPS.findIndex(s=>s.id===id);
+  const swapIdx = idx + dir;
+  if(idx<0 || swapIdx<0 || swapIdx>=ALL_STOPS.length) return;
+  [ALL_STOPS[idx], ALL_STOPS[swapIdx]] = [ALL_STOPS[swapIdx], ALL_STOPS[idx]];
+  renderStops(); // 立即反映畫面順序，避免使用者連點時感覺卡頓
+  try {
+    const updates = ALL_STOPS
+      .map((s,i)=>({ id:s.id, newSort:(i+1)*10, changed:s.sort_order!==(i+1)*10 }))
+      .filter(u=>u.changed);
+    for(const u of updates){
+      await api('PUT',`/api/schedule-admin?resource=stops&id=${u.id}`,{sort_order:u.newSort});
+    }
+    await loadStops();
+  } catch(e){
+    alert(e.message);
+    await loadStops();
+  }
+}
+
+async function deleteStop(id, name){
+  if(!confirm(`確定刪除站點「${name}」？此操作無法復原。`)) return;
+  try {
+    // 刪除前檢查是否仍被校車時刻表或公車方向對應使用，避免留下失效關聯
+    const [tripStopsRes, busDirsRes] = await Promise.all([
+      api('GET','/api/schedule-admin?resource=trip_stops'),
+      api('GET','/api/schedule-admin?resource=bus_directions')
+    ]);
+    const usedInTrips = (tripStopsRes.data||[]).some(ts=>ts.stop_id===id);
+    const usedInBusDirs = (busDirsRes.data||[]).some(bd=>bd.stop_id===id);
+    if(usedInTrips || usedInBusDirs){
+      alert('此站點仍被班次時刻表或公車路線設定使用中，請先於「校車班表」或「公車路線」移除相關設定，才能刪除此站點。');
+      return;
+    }
+    await api('DELETE',`/api/schedule-admin?resource=stops&id=${id}`);
+    await loadStops();
+  } catch(e){ alert(e.message); }
 }
 
 function openStopModal(id){
