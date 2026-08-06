@@ -83,16 +83,21 @@ export default async function handler(req, res) {
   if (!user) return res.status(401).json({ error: 'Authentication required' });
 
   const { resource, id } = req.query;
-  // resource: stops | school_routes | school_trips | trip_stops | bus_routes | bus_directions
+  // resource: stops | school_routes | school_trips | trip_stops | bus_routes | bus_directions | site_settings
 
-  const ALLOWED_RESOURCES = ['stops','school_routes','school_trips','trip_stops','bus_routes','bus_directions'];
+  const ALLOWED_RESOURCES = ['stops','school_routes','school_trips','trip_stops','bus_routes','bus_directions','site_settings'];
   if (!resource || !ALLOWED_RESOURCES.includes(resource)) {
     return res.status(400).json({ error: 'Invalid resource. Use: ' + ALLOWED_RESOURCES.join(', ') });
   }
 
-  // 編輯者只能操作班次，不能操作站點設定
-  if (user.role === 'editor' && ['stops'].includes(resource)) {
-    return res.status(403).json({ error: '編輯者無權限操作站點設定' });
+  // 編輯者只能操作班次，不能操作站點設定或公告／備註設定（僅 admin 可編輯）
+  if (user.role === 'editor' && ['stops','site_settings'].includes(resource)) {
+    return res.status(403).json({ error: '編輯者無權限操作此設定' });
+  }
+
+  // site_settings 是單一列設定（id 固定為 1），只支援讀取與更新
+  if (resource === 'site_settings' && (req.method === 'POST' || req.method === 'DELETE')) {
+    return res.status(405).json({ error: 'site_settings 僅支援 GET / PUT' });
   }
 
   try {
@@ -110,6 +115,10 @@ export default async function handler(req, res) {
       }
       if (resource === 'bus_directions' && req.query.route_id) {
         query = `?route_id=eq.${req.query.route_id}&order=direction.asc,seq.asc`;
+      }
+      // site_settings 是單一列設定，固定讀取 id=1（沒有 sort_order/created_at 欄位）
+      if (resource === 'site_settings') {
+        query = '?id=eq.1';
       }
 
       const data = await dbGet(url, key, resource, query);
@@ -152,7 +161,8 @@ export default async function handler(req, res) {
 
     // ── PUT：更新資料 ─────────────────────────────────────────
     if (req.method === 'PUT') {
-      if (!id) return res.status(400).json({ error: 'Missing id parameter' });
+      const targetId = resource === 'site_settings' ? 1 : id;
+      if (!targetId) return res.status(400).json({ error: 'Missing id parameter' });
       const body = req.body;
       if (!body) return res.status(400).json({ error: 'Request body required' });
 
@@ -164,7 +174,7 @@ export default async function handler(req, res) {
         }
       }
 
-      await dbPut(url, key, resource, id, body);
+      await dbPut(url, key, resource, targetId, body);
       return res.status(200).json({ success: true });
     }
 

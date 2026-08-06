@@ -25,16 +25,17 @@ export default async function handler(req, res) {
 
   try {
     // 並行查詢所有資料
-    const [stopsRes, routesRes, tripsRes, tripStopsRes, busRoutesRes, busDirectionsRes] = await Promise.all([
+    const [stopsRes, routesRes, tripsRes, tripStopsRes, busRoutesRes, busDirectionsRes, settingsRes] = await Promise.all([
       fetch(`${url}/rest/v1/stops?active=eq.true&order=sort_order.asc`, { headers }),
       fetch(`${url}/rest/v1/school_routes?order=sort_order.asc`, { headers }),
       fetch(`${url}/rest/v1/school_trips?order=sort_order.asc`, { headers }),
       fetch(`${url}/rest/v1/trip_stops?order=seq.asc`, { headers }),
       fetch(`${url}/rest/v1/bus_routes?active=eq.true&order=sort_order.asc`, { headers }),
       fetch(`${url}/rest/v1/bus_directions?order=seq.asc`, { headers }),
+      fetch(`${url}/rest/v1/site_settings?id=eq.1&select=announcement,footer_note`, { headers }),
     ]);
 
-    // 檢查所有請求是否成功
+    // 檢查所有請求是否成功（site_settings 資料表若尚未建立，不影響其他資料正常顯示）
     const responses = [stopsRes, routesRes, tripsRes, tripStopsRes, busRoutesRes, busDirectionsRes];
     for (const r of responses) {
       if (!r.ok) {
@@ -46,6 +47,19 @@ export default async function handler(req, res) {
     const [stops, routes, trips, tripStops, busRoutes, busDirections] = await Promise.all(
       responses.map(r => r.json())
     );
+
+    let settings = { announcement: '', footer_note: '' };
+    if (settingsRes.ok) {
+      const settingsRows = await settingsRes.json();
+      if (settingsRows?.[0]) {
+        settings = {
+          announcement: settingsRows[0].announcement || '',
+          footer_note: settingsRows[0].footer_note || ''
+        };
+      }
+    } else {
+      console.error('[schedule] site_settings query failed (non-fatal):', settingsRes.status);
+    }
 
     // 組合校內班次資料
     const tripsWithStops = trips.map(trip => ({
@@ -92,6 +106,7 @@ export default async function handler(req, res) {
       stops,
       school_routes: schoolRoutesWithTrips,
       bus_routes: busRoutesWithDirs,
+      settings,
       generated_at: new Date().toISOString()
     });
 
