@@ -206,6 +206,7 @@ tr:hover td{background:#fafafa;}
         <div class="sidebar-group-label admin-only" style="display:none;">系統設定</div>
         <button class="nav-btn admin-only" onclick="switchPanel('accounts')" id="nav-accounts"><span class="icon">👥</span>帳號管理</button>
         <button class="nav-btn admin-only" onclick="switchPanel('stops')" id="nav-stops"><span class="icon">📍</span>站點管理</button>
+        <button class="nav-btn admin-only" onclick="switchPanel('site-settings')" id="nav-site-settings"><span class="icon">📢</span>公告與備註</button>
         <button class="nav-btn admin-only" onclick="switchPanel('api')" id="nav-api"><span class="icon">🔌</span>API 設定</button>
       </div>
       <div class="sidebar-group">
@@ -284,6 +285,43 @@ tr:hover td{background:#fafafa;}
               <tbody id="stops-tbody"></tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- ── 公告與備註 ── -->
+      <div class="panel" id="panel-site-settings">
+        <div class="card" style="max-width:720px;">
+          <div class="card-header"><span class="card-title">重要公告</span></div>
+          <p class="hint" style="margin-bottom:.6rem;">顯示在前台車班查詢上方，以紅底加粗方式強調，讓使用者能快速注意到。可直接輸入 HTML 原始碼（例如加上連結、粗體、換行）。留空則前台不顯示此區塊。</p>
+          <div class="fg">
+            <textarea id="ss-announcement" rows="3" oninput="updateAnnouncementPreview()" placeholder="例如：因道路施工，8/10（一）起 S3 站暫停停靠，請改至 S4 站候車。" style="width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.85rem;font-family:monospace;resize:vertical;"></textarea>
+          </div>
+          <div class="fg">
+            <label>預覽（前台實際樣式）</label>
+            <div id="ss-announcement-preview-wrap" style="display:none;">
+              <div style="display:flex;gap:.65rem;align-items:flex-start;background:#FDEBEB;border:1.5px solid #C21F1F;border-left:5px solid #C21F1F;border-radius:var(--rs);padding:.9rem 1.1rem;color:#8F1616;font-size:.92rem;font-weight:600;line-height:1.65;">
+                <span aria-hidden="true" style="flex:none;font-size:1.25rem;">📢</span>
+                <span id="ss-announcement-preview"></span>
+              </div>
+            </div>
+            <div id="ss-announcement-empty-hint" style="padding:10px 12px;border:1.5px dashed var(--bd);border-radius:var(--rs);font-size:.85rem;color:var(--gray);">（沒有內容，前台不會顯示此區塊）</div>
+          </div>
+        </div>
+        <div class="card" style="max-width:720px;">
+          <div class="card-header"><span class="card-title">備註（HTML）</span></div>
+          <p class="hint" style="margin-bottom:.6rem;">顯示在前台車班查詢最下方，可直接輸入 HTML 原始碼（例如加上連結、換行、簡單排版）。留空則前台不顯示此區塊。</p>
+          <div class="fg">
+            <textarea id="ss-footer-note" rows="6" oninput="updateFooterNotePreview()" placeholder="例如：&lt;p&gt;客服信箱：&lt;a href=&quot;mailto:bus@cgust.edu.tw&quot;&gt;bus@cgust.edu.tw&lt;/a&gt;&lt;/p&gt;" style="width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.85rem;font-family:monospace;resize:vertical;"></textarea>
+          </div>
+          <div class="fg">
+            <label>預覽</label>
+            <div id="ss-footer-note-preview" style="padding:10px 12px;border:1.5px dashed var(--bd);border-radius:var(--rs);font-size:.85rem;min-height:2.5rem;color:var(--ink);"></div>
+          </div>
+        </div>
+        <p class="hint" style="max-width:720px;margin-bottom:.6rem;">以上兩個欄位只有 admin 能編輯，且會直接以 HTML 顯示在公開頁面，請勿貼上不信任的原始碼。</p>
+        <div style="max-width:720px;display:flex;align-items:center;gap:.75rem;">
+          <button class="btn btn-primary" onclick="saveSiteSettings()">儲存設定</button>
+          <span id="ss-msg" style="font-size:.85rem;color:var(--gray);"></span>
         </div>
       </div>
 
@@ -702,7 +740,7 @@ function startSession(user){
 
 // ── Navigation ────────────────────────────────────────────────
 // 頁面權限設定
-const ADMIN_ONLY_PANELS    = ['stops','api','accounts']; // 需 admin 角色
+const ADMIN_ONLY_PANELS    = ['stops','api','accounts','site-settings']; // 需 admin 角色
 const SUPERADMIN_ONLY_PANELS = ['api','accounts'];       // 只有 username=admin 帳號
 
 function canViewPanel(name){
@@ -733,6 +771,7 @@ async function loadAll(){
   await Promise.all([loadStops(), loadSchoolRoutes(), loadBusRoutes()]);
   if(SESSION_USER?.role==='admin'){
     await loadAccounts();
+    await loadSiteSettings();
   }
   checkTDXStatus();
 }
@@ -1850,6 +1889,51 @@ async function deleteAcc(id,username){
   if(!confirm(`確定刪除帳號「${username}」？`)) return;
   try { await fetch(`/api/auth-accounts?id=${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${SESSION_TOKEN}`}}); await loadAccounts(); }
   catch(e){alert(e.message);}
+}
+
+// ── 公告與備註設定（僅 admin）────────────────────────────────────
+async function loadSiteSettings(){
+  try {
+    const res = await api('GET','/api/schedule-admin?resource=site_settings');
+    const row = (res.data||[])[0] || {};
+    document.getElementById('ss-announcement').value = row.announcement || '';
+    document.getElementById('ss-footer-note').value = row.footer_note || '';
+    updateAnnouncementPreview();
+    updateFooterNotePreview();
+  } catch(e){
+    console.error('loadSiteSettings error:', e);
+  }
+}
+
+function updateAnnouncementPreview(){
+  const val = document.getElementById('ss-announcement').value.trim();
+  document.getElementById('ss-announcement-preview').innerHTML = val;
+  document.getElementById('ss-announcement-preview-wrap').style.display = val ? '' : 'none';
+  document.getElementById('ss-announcement-empty-hint').style.display = val ? 'none' : '';
+}
+
+function updateFooterNotePreview(){
+  const val = document.getElementById('ss-footer-note').value;
+  document.getElementById('ss-footer-note-preview').innerHTML = val
+    || '<span style="color:var(--gray);">（沒有內容，前台不會顯示此區塊）</span>';
+}
+
+async function saveSiteSettings(){
+  const msg = document.getElementById('ss-msg');
+  msg.style.color = 'var(--gray)';
+  msg.textContent = '儲存中…';
+  try {
+    await api('PUT','/api/schedule-admin?resource=site_settings&id=1',{
+      announcement: document.getElementById('ss-announcement').value,
+      footer_note: document.getElementById('ss-footer-note').value
+    });
+    msg.style.color = 'var(--green)';
+    msg.textContent = '已儲存 ✓';
+    setTimeout(()=>{ if(msg.textContent==='已儲存 ✓') msg.textContent=''; }, 3000);
+  } catch(e){
+    msg.style.color = 'var(--danger)';
+    msg.textContent = '儲存失敗：'+e.message;
+  }
 }
 
 function openResetPw(id,username){

@@ -23,6 +23,9 @@
   --border:#E8E0D5;
   --success:#0f6e56;
   --success-light:#e1f5ee;
+  --danger:#C21F1F;
+  --danger-dark:#8F1616;
+  --danger-light:#FDEBEB;
   --focus:#FFD700;
   --r:14px;--rs:10px;
   --shadow:0 2px 12px rgba(232,101,10,0.10);
@@ -146,6 +149,33 @@ header::before{
   padding:1.35rem;
   margin-bottom:1rem;
   box-shadow:var(--shadow-card);
+}
+
+/* ── 重要公告 ── */
+.announcement-banner{
+  max-width:640px;margin:.85rem auto 0;padding:0 1.25rem;
+}
+.announcement-banner .ab-inner{
+  display:flex;gap:.65rem;align-items:flex-start;
+  background:var(--danger-light);border:1.5px solid var(--danger);
+  border-left:5px solid var(--danger);
+  border-radius:var(--rs);padding:.9rem 1.1rem;
+  color:var(--danger-dark);font-size:.92rem;font-weight:600;line-height:1.65;
+  word-break:break-word;
+  box-shadow:0 2px 10px rgba(179,38,30,0.12);
+}
+.announcement-banner .ab-icon{flex:none;font-size:1.25rem;line-height:1.5;}
+.announcement-banner .ab-body p:first-child{margin-top:0;}
+.announcement-banner .ab-body p:last-child{margin-bottom:0;}
+
+/* ── 備註（HTML） ── */
+.footer-note-area{
+  max-width:640px;margin:0 auto 1rem;padding:0 1.25rem;
+  color:var(--ink-mid);font-size:.82rem;line-height:1.7;
+}
+.footer-note-area .fn-inner{
+  background:white;border:.5px solid var(--border);border-radius:var(--rs);
+  padding:.9rem 1.1rem;
 }
 
 /* ── SIMPLE CHIPS ── */
@@ -384,6 +414,14 @@ footer{
   </div>
 </nav>
 
+<!-- 重要公告：由後台管理設定，沒有內容時自動隱藏 -->
+<div id="announcement-banner" class="announcement-banner" style="display:none;" role="alert">
+  <div class="ab-inner">
+    <span class="ab-icon" aria-hidden="true">📢</span>
+    <span class="ab-body" id="announcement-text"></span>
+  </div>
+</div>
+
 <main id="main-content">
 <div class="main">
 
@@ -420,6 +458,12 @@ footer{
   </div>
 
 </div>
+
+<!-- 備註：由後台管理以 HTML 編輯，沒有內容時自動隱藏 -->
+<div id="footer-note-area" class="footer-note-area" style="display:none;">
+  <div class="fn-inner" id="footer-note-content"></div>
+</div>
+
 </main>
 
 <footer role="contentinfo">
@@ -493,12 +537,36 @@ async function loadSchedule(){
       }))
     }));
 
+    // 公告與備註（由後台設定，沒有內容就整區隱藏）
+    renderSiteSettings(data.settings || {});
+
     DATA_LOADED = true;
     DATA_ERROR  = false;
   } catch(e) {
     console.error('[loadSchedule] Error:', e);
     DATA_LOADED = false;
     DATA_ERROR  = true;
+  }
+}
+
+// 重要公告與備註：皆由後台 admin 帳號以 HTML 編輯（如同一般 CMS 後台內容），信任其內容
+function renderSiteSettings(settings){
+  const announcement = (settings.announcement||'').trim();
+  const abEl = document.getElementById('announcement-banner');
+  if(announcement){
+    document.getElementById('announcement-text').innerHTML = announcement;
+    abEl.style.display = '';
+  } else {
+    abEl.style.display = 'none';
+  }
+
+  const footerNote = (settings.footer_note||'').trim();
+  const fnEl = document.getElementById('footer-note-area');
+  if(footerNote){
+    document.getElementById('footer-note-content').innerHTML = footerNote;
+    fnEl.style.display = '';
+  } else {
+    fnEl.style.display = 'none';
   }
 }
 
@@ -544,17 +612,20 @@ function parseTDXArrival(a){
   return {estSeconds, arrivalTime};
 }
 
-// ── 前端快取（30秒內同站不重複呼叫 API）─────────────────────────────────────────
+// ── 前端快取（30秒內同站不重複呼叫 API，且進行中的請求會共用同一個 Promise，避免同時重複打相同 API）─────
 const API_CACHE={};
 const CACHE_TTL=30*1000;
-async function cachedFetch(url){
+function cachedFetch(url){
   const now=Date.now();
-  if(API_CACHE[url]&&now-API_CACHE[url].ts<CACHE_TTL) return API_CACHE[url].data;
-  const res=await fetch(url);
-  if(!res.ok) throw new Error('HTTP '+res.status);
-  const data=await res.json();
-  API_CACHE[url]={ts:now,data};
-  return data;
+  const cached=API_CACHE[url];
+  if(cached && now-cached.ts<CACHE_TTL) return cached.promise;
+  const promise=fetch(url).then(res=>{
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    return res.json();
+  });
+  API_CACHE[url]={ts:now,promise};
+  promise.catch(()=>{ delete API_CACHE[url]; }); // 失敗就清掉快取，避免一直卡住錯誤結果
+  return promise;
 }
 
 // 從 BUS_ROUTES 動態建立 TDX 站牌名稱對照表
@@ -587,14 +658,14 @@ async function getBusTripsForStop(sid){
     const relevantRoutes = BUS_ROUTES.filter(r=>r.directions.some(d=>d.stops.some(s=>s.id===sid)));
     if(!relevantRoutes.length) return [];
 
-    // 同一站可能跨兩個縣市（例如候車亭有桃園和新北的公車）
+    // 同一站可能跨兩個縣市（例如候車亭有桃園和新北的公車）→ 平行查詢，不要一個一個等
     const cities = [...new Set(relevantRoutes.map(r=>r.tdxCity))];
+    const jsonList = await Promise.all(cities.map(city=>
+      cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`)
+        .catch(e=>{console.error('TDX proxy error:',e);return null;})
+    ));
     const allArrivals = [];
-    for(const city of cities){
-      const json = await cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`).catch(e=>{console.error('TDX proxy error:',e);return null;});
-      if(!json) continue;
-      allArrivals.push(...(json.data||[]));
-    }
+    jsonList.forEach(json=>{ if(json) allArrivals.push(...(json.data||[])); });
 
     
 
@@ -625,33 +696,46 @@ async function getBusTripsForStop(sid){
 async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
   try {
     if(!TDX_CONFIG.ENABLED) return getMockBusTripsForRoute(fromId,toId,dowVal,afterMin);
-    const results = [];
-    for(const route of BUS_ROUTES){
-      for(let di=0;di<route.directions.length;di++){
-        const dir = route.directions[di];
+    const STOP_MAP = getStopMap();
+
+    // 先找出所有「這一站到那一站」方向合理的 (route, direction) 組合，
+    // 再一次平行送出查詢（原本是巢狀 for 迴圈逐一 await，路線一多查詢就會很慢）。
+    const tasks = [];
+    BUS_ROUTES.forEach(route=>{
+      route.directions.forEach((dir,di)=>{
         const fi = dir.stops.findIndex(s=>s.id===fromId);
         const ti = dir.stops.findIndex(s=>s.id===toId);
-        if(fi===-1||ti===-1||fi>=ti) continue;
-        const STOP_MAP = getStopMap();
+        if(fi===-1||ti===-1||fi>=ti) return;
         const fromTdxName = Object.entries(STOP_MAP).find(([k,v])=>v===fromId)?.[0];
-        if(!fromTdxName) continue;
-        const res = await fetch(`/api/tdx-bus?city=${encodeURIComponent(route.tdxCity)}&stop=${encodeURIComponent(fromTdxName)}`);
-        if(!res.ok) continue;
-        const json = await res.json();
-        const arrivals = json.data||[];
-        arrivals
-          .filter(a=>(a.RouteName?.Zh_tw===route.routeNo||a.RouteName?.Zh_tw===route.tdxRouteName)&&a.Direction===di)
-          .forEach(a=>{
-            const parsed = parseTDXArrival(a);
-            if(!parsed) return;
-            const depMin = Math.floor(Date.now()/60000)+Math.round(parsed.estSeconds/60);
-            if(depMin<afterMin) return;
-            results.push({routeNo:route.routeNo, route, dir,
-              depTime:parsed.arrivalTime, isLive:true, estSeconds:parsed.estSeconds,
-              stops:dir.stops.map(id=>({id})), fi, ti});
-          });
-      }
-    }
+        if(!fromTdxName) return;
+        tasks.push({route, dir, di, fromTdxName, fi, ti});
+      });
+    });
+    if(!tasks.length) return [];
+
+    // 平行呼叫；相同縣市＋站名的請求會透過 cachedFetch 自動共用同一個結果，不會重複打 API
+    const jsonResults = await Promise.all(tasks.map(t=>
+      cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(t.route.tdxCity)}&stop=${encodeURIComponent(t.fromTdxName)}`)
+        .catch(e=>{ console.error('TDX proxy error:', e); return null; })
+    ));
+
+    const results = [];
+    tasks.forEach((t,idx)=>{
+      const json = jsonResults[idx];
+      if(!json) return;
+      const arrivals = json.data||[];
+      arrivals
+        .filter(a=>(a.RouteName?.Zh_tw===t.route.routeNo||a.RouteName?.Zh_tw===t.route.tdxRouteName)&&a.Direction===t.di)
+        .forEach(a=>{
+          const parsed = parseTDXArrival(a);
+          if(!parsed) return;
+          const depMin = Math.floor(Date.now()/60000)+Math.round(parsed.estSeconds/60);
+          if(depMin<afterMin) return;
+          results.push({routeNo:t.route.routeNo, route:t.route, dir:t.dir,
+            depTime:parsed.arrivalTime, isLive:true, estSeconds:parsed.estSeconds,
+            stops:t.dir.stops.map(id=>({id})), fi:t.fi, ti:t.ti});
+        });
+    });
     return results.sort((a,b)=>a.estSeconds-b.estSeconds);
   } catch(e) {
     console.error('getBusTripsForRoute error:', e);
