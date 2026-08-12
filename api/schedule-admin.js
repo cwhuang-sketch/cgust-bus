@@ -103,7 +103,14 @@ export default async function handler(req, res) {
   try {
     // ── GET：讀取資料 ─────────────────────────────────────────
     if (req.method === 'GET') {
-      let query = '?order=sort_order.asc,created_at.asc';
+      // 各資料表的排序欄位不同（trip_stops / bus_directions 用 seq，沒有 sort_order/created_at），
+      // 沒有另外指定條件時，依資料表挑正確的排序欄位，避免對不存在的欄位排序而查詢失敗。
+      const DEFAULT_ORDER = {
+        trip_stops: 'seq.asc',
+        bus_directions: 'direction.asc,seq.asc',
+        site_settings: 'id.asc',
+      };
+      let query = `?order=${DEFAULT_ORDER[resource] || 'sort_order.asc,created_at.asc'}`;
       if (id) query = `?id=eq.${id}`;
 
       // 特殊查詢：取得特定 route 的所有 trips
