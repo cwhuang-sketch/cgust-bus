@@ -865,23 +865,40 @@ async function toggleStop(id, active){
 }
 
 // ── School Routes ─────────────────────────────────────────────
+//
+// 效能重點：原本是「每條路線都各 GET 一次班次、每個班次又各 GET 一次站點時刻」，
+// 路線與班次一多，就會是幾十、上百個序列 API 請求，載入自然越來越慢。
+// 改成固定 3 個請求（路線、全部班次、全部班次的站點時刻），在前端依 route_id / trip_id 分組即可。
 async function loadSchoolRoutes(){
   try {
-    const routesData = await api('GET','/api/schedule-admin?resource=school_routes');
-    SCHOOL_ROUTES = routesData.data||[];
-    // Load trips for each route
-    for(const route of SCHOOL_ROUTES){
-      // stop_intervals 已在 school_routes 資料表中
-      route.stop_intervals = route.stop_intervals || {};
-      const tripsData = await api('GET',`/api/schedule-admin?resource=school_trips&route_id=${route.id}`);
-      route.trips = tripsData.data||[];
-      for(const trip of route.trips){
-        const stopsData = await api('GET',`/api/schedule-admin?resource=trip_stops&trip_id=${trip.id}`);
-        trip.stops = stopsData.data||[];
-        // custom_intervals 已在 school_trips 資料表中
-        trip.custom_intervals = trip.custom_intervals || null;
-      }
-    }
+    const [routesData, tripsData, tripStopsData] = await Promise.all([
+      api('GET','/api/schedule-admin?resource=school_routes'),
+      api('GET','/api/schedule-admin?resource=school_trips'),
+      api('GET','/api/schedule-admin?resource=trip_stops'),
+    ]);
+
+    // 依 trip_id 把各站時刻分組
+    const stopsByTrip = {};
+    (tripStopsData.data||[]).forEach(ts=>{
+      if(!stopsByTrip[ts.trip_id]) stopsByTrip[ts.trip_id]=[];
+      stopsByTrip[ts.trip_id].push(ts);
+    });
+
+    // 依 route_id 把班次分組，並掛上對應的站點時刻
+    const tripsByRoute = {};
+    (tripsData.data||[]).forEach(trip=>{
+      trip.stops = stopsByTrip[trip.id] || [];
+      trip.custom_intervals = trip.custom_intervals || null;
+      if(!tripsByRoute[trip.route_id]) tripsByRoute[trip.route_id]=[];
+      tripsByRoute[trip.route_id].push(trip);
+    });
+
+    SCHOOL_ROUTES = (routesData.data||[]).map(route=>({
+      ...route,
+      stop_intervals: route.stop_intervals || {},
+      trips: tripsByRoute[route.id] || []
+    }));
+
     renderSchoolRoutes();
   } catch(e){ console.error('loadSchoolRoutes:',e); }
 }
@@ -904,11 +921,62 @@ function renderSchoolRoutes(){
           <button class="btn btn-primary btn-sm" onclick="openTripModal('${route.id}')">＋ 新增班次</button>
         </div>
       </div>
+      ${route.trips.length?`
+      <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.6rem;padding-bottom:.6rem;border-bottom:1px dashed var(--bd);">
+        <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:var(--gray);cursor:pointer;">
+          <input type="checkbox" onchange="toggleAllTrips('${route.id}',this.checked)"> 全選本路線班次
+        </label>
+        <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" id="batch-del-btn-${route.id}" disabled onclick="deleteTripsBatch('${route.id}')">批次刪除已選班次（0）</button>
+      </div>` : ''}
       <div>
         ${route.trips.length?route.trips.map(trip=>renderTripItem(route,trip)).join('')
           :'<p style="font-size:.82rem;color:var(--gray);">尚無班次，請點「新增班次」。</p>'}
       </div>
     </div>`).join('');
+}
+
+// 全選／取消全選 本路線班次
+function toggleAllTrips(routeId, checked){
+  document.querySelectorAll(`.trip-check[data-route="${routeId}"]`).forEach(cb=>{ cb.checked=checked; });
+  updateBatchDeleteBar(routeId);
+}
+
+// 更新「批次刪除已選班次」按鈕上的勾選數量與可用狀態
+function updateBatchDeleteBar(routeId){
+  const count = document.querySelectorAll(`.trip-check[data-route="${routeId}"]:checked`).length;
+  const btn = document.getElementById(`batch-del-btn-${routeId}`);
+  if(!btn) return;
+  btn.textContent = `批次刪除已選班次（${count}）`;
+  btn.disabled = count===0;
+}
+
+// 批次刪除所選班次：先平行刪掉每個班次底下的各站時刻，再刪班次本身
+async function deleteTripsBatch(routeId){
+  const checked = [...document.querySelectorAll(`.trip-check[data-route="${routeId}"]:checked`)];
+  if(!checked.length) return;
+  const tripIds = checked.map(c=>c.dataset.trip);
+  if(!confirm(`確定刪除選取的 ${tripIds.length} 個班次？此操作無法復原。`)) return;
+
+  const route = SCHOOL_ROUTES.find(r=>r.id===routeId);
+  const btn = document.getElementById(`batch-del-btn-${routeId}`);
+  if(btn){ btn.disabled=true; }
+
+  try {
+    let done=0;
+    for(const tripId of tripIds){
+      const trip = route?.trips.find(t=>t.id===tripId);
+      const stops = trip?.stops||[];
+      // 同一班次底下的各站時刻可以平行刪除
+      await Promise.all(stops.map(s=>api('DELETE',`/api/schedule-admin?resource=trip_stops&id=${s.id}`)));
+      await api('DELETE',`/api/schedule-admin?resource=school_trips&id=${tripId}`);
+      done++;
+      if(btn) btn.textContent = `刪除中…（${done}/${tripIds.length}）`;
+    }
+    await loadSchoolRoutes();
+  } catch(e){
+    alert('批次刪除失敗：'+e.message);
+    await loadSchoolRoutes();
+  }
 }
 
 function renderTripItem(route, trip){
@@ -920,11 +988,14 @@ function renderTripItem(route, trip){
   const depTime = trip.stops[0]?.arrive_time||'';
   const isCustom = trip.custom_intervals && Object.keys(trip.custom_intervals).length>0;
   return `<div class="trip-item">
-    <div class="trip-info">
-      <div class="trip-time">${depTime} 發車 ${isCustom?'<span style="font-size:.72rem;color:var(--orange);margin-left:4px;">✏️ 已手動調整</span>':''}</div>
-      <div class="trip-days">行駛日：週${daysStr}</div>
-      <div class="trip-stops">${stopsStr}</div>
-    </div>
+    <label style="display:flex;align-items:flex-start;gap:.6rem;cursor:pointer;min-width:0;">
+      <input type="checkbox" class="trip-check" data-route="${esc(route.id)}" data-trip="${esc(trip.id)}" onchange="updateBatchDeleteBar('${esc(route.id)}')" style="margin-top:.35rem;flex:none;">
+      <div class="trip-info">
+        <div class="trip-time">${depTime} 發車 ${isCustom?'<span style="font-size:.72rem;color:var(--orange);margin-left:4px;">✏️ 已手動調整</span>':''}</div>
+        <div class="trip-days">行駛日：週${daysStr}</div>
+        <div class="trip-stops">${stopsStr}</div>
+      </div>
+    </label>
     <div class="actions">
       <button class="btn btn-outline btn-sm" onclick="openEditTrip('${trip.id}')">個別編輯</button>
       <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" onclick="deleteTrip('${trip.id}','${esc(depTime)}')">刪除</button>
@@ -1620,11 +1691,18 @@ async function saveTrip(){
 async function deleteTrip(tripId, label){
   if(!confirm(`確定刪除 ${label} 班次？此操作無法復原。`)) return;
   try {
-    // Delete trip stops first
-    const stopsData=await api('GET',`/api/schedule-admin?resource=trip_stops&trip_id=${tripId}`);
-    for(const s of stopsData.data||[]){
-      await api('DELETE',`/api/schedule-admin?resource=trip_stops&id=${s.id}`);
+    // 這個班次的各站時刻已經在 SCHOOL_ROUTES 裡有快取，不用再重新 GET 一次
+    let stops = null;
+    for(const route of SCHOOL_ROUTES){
+      const trip = route.trips.find(t=>t.id===tripId);
+      if(trip){ stops = trip.stops; break; }
     }
+    if(!stops){
+      const stopsData=await api('GET',`/api/schedule-admin?resource=trip_stops&trip_id=${tripId}`);
+      stops = stopsData.data||[];
+    }
+    // 平行刪除各站時刻
+    await Promise.all(stops.map(s=>api('DELETE',`/api/schedule-admin?resource=trip_stops&id=${s.id}`)));
     await api('DELETE',`/api/schedule-admin?resource=school_trips&id=${tripId}`);
     await loadSchoolRoutes();
   } catch(e){ alert(e.message); }
