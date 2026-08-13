@@ -25,7 +25,7 @@ export default async function handler(req, res) {
 
   try {
     // 並行查詢所有資料
-    const [stopsRes, routesRes, tripsRes, tripStopsRes, busRoutesRes, busDirectionsRes, settingsRes] = await Promise.all([
+    const [stopsRes, routesRes, tripsRes, tripStopsRes, busRoutesRes, busDirectionsRes, settingsRes, calendarRes] = await Promise.all([
       fetch(`${url}/rest/v1/stops?active=eq.true&order=sort_order.asc`, { headers }),
       fetch(`${url}/rest/v1/school_routes?order=sort_order.asc`, { headers }),
       fetch(`${url}/rest/v1/school_trips?order=sort_order.asc`, { headers }),
@@ -33,6 +33,7 @@ export default async function handler(req, res) {
       fetch(`${url}/rest/v1/bus_routes?active=eq.true&order=sort_order.asc`, { headers }),
       fetch(`${url}/rest/v1/bus_directions?order=seq.asc`, { headers }),
       fetch(`${url}/rest/v1/site_settings?id=eq.1&select=announcement,footer_note`, { headers }),
+      fetch(`${url}/rest/v1/calendar_dates?select=id,type&order=id.asc`, { headers }),
     ]);
 
     // 檢查所有請求是否成功（site_settings 資料表若尚未建立，不影響其他資料正常顯示）
@@ -59,6 +60,15 @@ export default async function handler(req, res) {
       }
     } else {
       console.error('[schedule] site_settings query failed (non-fatal):', settingsRes.status);
+    }
+
+    // 假日行事曆（同樣是選用資料表，查詢失敗不影響其他資料正常顯示）
+    let calendarDates = [];
+    if (calendarRes.ok) {
+      const rows = await calendarRes.json();
+      calendarDates = rows.map(r => ({ date: r.id, type: r.type }));
+    } else {
+      console.error('[schedule] calendar_dates query failed (non-fatal):', calendarRes.status);
     }
 
     // 組合校內班次資料
@@ -107,6 +117,7 @@ export default async function handler(req, res) {
       school_routes: schoolRoutesWithTrips,
       bus_routes: busRoutesWithDirs,
       settings,
+      calendar_dates: calendarDates,
       generated_at: new Date().toISOString()
     });
 

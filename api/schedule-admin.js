@@ -83,15 +83,15 @@ export default async function handler(req, res) {
   if (!user) return res.status(401).json({ error: 'Authentication required' });
 
   const { resource, id } = req.query;
-  // resource: stops | school_routes | school_trips | trip_stops | bus_routes | bus_directions | site_settings
+  // resource: stops | school_routes | school_trips | trip_stops | bus_routes | bus_directions | site_settings | calendar_dates
 
-  const ALLOWED_RESOURCES = ['stops','school_routes','school_trips','trip_stops','bus_routes','bus_directions','site_settings'];
+  const ALLOWED_RESOURCES = ['stops','school_routes','school_trips','trip_stops','bus_routes','bus_directions','site_settings','calendar_dates'];
   if (!resource || !ALLOWED_RESOURCES.includes(resource)) {
     return res.status(400).json({ error: 'Invalid resource. Use: ' + ALLOWED_RESOURCES.join(', ') });
   }
 
-  // 編輯者只能操作班次，不能操作站點設定或公告／備註設定（僅 admin 可編輯）
-  if (user.role === 'editor' && ['stops','site_settings'].includes(resource)) {
+  // 編輯者只能操作班次，不能操作站點設定、公告／備註設定、假日行事曆（僅 admin 可編輯）
+  if (user.role === 'editor' && ['stops','site_settings','calendar_dates'].includes(resource)) {
     return res.status(403).json({ error: '編輯者無權限操作此設定' });
   }
 
@@ -109,6 +109,7 @@ export default async function handler(req, res) {
         trip_stops: 'seq.asc',
         bus_directions: 'direction.asc,seq.asc',
         site_settings: 'id.asc',
+        calendar_dates: 'id.asc',
       };
       let query = `?order=${DEFAULT_ORDER[resource] || 'sort_order.asc,created_at.asc'}`;
       if (id) query = `?id=eq.${id}`;
@@ -145,6 +146,7 @@ export default async function handler(req, res) {
         trip_stops:     ['trip_id','stop_id','arrive_time','seq'],
         bus_routes:     ['route_no','operator_zh','operator_en','tdx_city','tdx_route_name'],
         bus_directions: ['route_id','direction','desc_zh','desc_en','seq','stop_id','tdx_stop_name'],
+        calendar_dates: ['id','type'],
       };
       const missing = (required[resource] || []).filter(f => !body[f]);
       if (missing.length) return res.status(400).json({ error: `缺少必填欄位: ${missing.join(', ')}` });
@@ -160,6 +162,16 @@ export default async function handler(req, res) {
       // 驗證時間格式
       if (resource === 'trip_stops' && !/^\d{2}:\d{2}$/.test(body.arrive_time)) {
         return res.status(400).json({ error: '時刻格式錯誤，應為 HH:MM' });
+      }
+
+      // 驗證假日行事曆日期格式與類型
+      if (resource === 'calendar_dates') {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(body.id)) {
+          return res.status(400).json({ error: '日期格式錯誤，應為 YYYY-MM-DD' });
+        }
+        if (!['holiday','makeup'].includes(body.type)) {
+          return res.status(400).json({ error: 'type 必須是 holiday 或 makeup' });
+        }
       }
 
       const newRecord = await dbPost(url, key, resource, body);
