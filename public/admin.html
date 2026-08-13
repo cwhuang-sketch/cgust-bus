@@ -206,6 +206,7 @@ tr:hover td{background:#fafafa;}
         <div class="sidebar-group-label admin-only" style="display:none;">系統設定</div>
         <button class="nav-btn admin-only" onclick="switchPanel('accounts')" id="nav-accounts"><span class="icon">👥</span>帳號管理</button>
         <button class="nav-btn admin-only" onclick="switchPanel('stops')" id="nav-stops"><span class="icon">📍</span>站點管理</button>
+        <button class="nav-btn admin-only" onclick="switchPanel('calendar')" id="nav-calendar"><span class="icon">📅</span>假日行事曆</button>
         <button class="nav-btn admin-only" onclick="switchPanel('site-settings')" id="nav-site-settings"><span class="icon">📢</span>公告與備註</button>
         <button class="nav-btn admin-only" onclick="switchPanel('api')" id="nav-api"><span class="icon">🔌</span>API 設定</button>
       </div>
@@ -223,7 +224,11 @@ tr:hover td{background:#fafafa;}
         <div class="card">
           <div class="card-header">
             <span class="card-title">校內班車路線</span>
-            <button class="btn btn-primary" onclick="openRouteModal()">＋ 新增路線</button>
+            <div style="display:flex;gap:.5rem;">
+              <button class="btn btn-outline btn-sm" onclick="collapseAllRoutes(true)">全部收合</button>
+              <button class="btn btn-outline btn-sm" onclick="collapseAllRoutes(false)">全部展開</button>
+              <button class="btn btn-primary" onclick="openRouteModal()">＋ 新增路線</button>
+            </div>
           </div>
           <div id="school-routes-list">
             <p style="color:var(--gray);text-align:center;padding:1.5rem;">載入中…</p>
@@ -285,6 +290,46 @@ tr:hover td{background:#fafafa;}
               <tbody id="stops-tbody"></tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <!-- ── 假日行事曆 ── -->
+      <div class="panel" id="panel-calendar">
+        <div class="card" style="max-width:720px;">
+          <div class="card-header"><span class="card-title">新增特殊日期</span></div>
+          <p class="hint" style="margin-bottom:.8rem;">
+            指定某一天是「假日」或「收假日」後，那天只會顯示班次設定裡有勾選對應標籤的班次，一般依星期幾（週一~週日）設定的班次當天不會出現。沒有特別指定的日期，照常依星期幾判斷。
+          </p>
+          <div class="fg">
+            <label>日期</label>
+            <input type="date" id="cal-date" style="padding:8px 10px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.9rem;">
+          </div>
+          <div class="fg">
+            <label>類型</label>
+            <div style="display:flex;gap:1.2rem;">
+              <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.88rem;">
+                <input type="radio" name="cal-type" value="holiday" checked> 假日
+              </label>
+              <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.88rem;">
+                <input type="radio" name="cal-type" value="makeup"> 收假日
+              </label>
+            </div>
+          </div>
+          <div class="fg">
+            <label>備註（選填）</label>
+            <input type="text" id="cal-note" placeholder="例如：中秋節連假、颱風假收假" style="width:100%;padding:8px 10px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.9rem;">
+          </div>
+          <div style="display:flex;align-items:center;gap:.75rem;">
+            <button class="btn btn-primary" onclick="addCalendarDate()">新增</button>
+            <span id="cal-msg" style="font-size:.85rem;color:var(--gray);"></span>
+          </div>
+        </div>
+        <div class="card" style="max-width:720px;">
+          <div class="card-header"><span class="card-title">已設定的特殊日期</span></div>
+          <table>
+            <thead><tr><th>日期</th><th>類型</th><th>備註</th><th>操作</th></tr></thead>
+            <tbody id="cal-tbody"></tbody>
+          </table>
         </div>
       </div>
 
@@ -427,6 +472,8 @@ tr:hover td{background:#fafafa;}
         <span class="day-chip on" data-d="5" onclick="toggleDay(this)">五</span>
         <span class="day-chip" data-d="6" onclick="toggleDay(this)">六</span>
         <span class="day-chip" data-d="7" onclick="toggleDay(this)">日</span>
+        <span class="day-chip" data-d="8" onclick="toggleDay(this)" style="border-color:var(--danger);color:var(--danger);" title="行事曆定義為假日的那天才會跑">假日</span>
+        <span class="day-chip" data-d="9" onclick="toggleDay(this)" style="border-color:var(--green);color:var(--green);" title="行事曆定義為收假日的那天才會跑">收假日</span>
       </div>
     </div>
 
@@ -496,6 +543,8 @@ tr:hover td{background:#fafafa;}
         <span class="day-chip" data-d="5" onclick="toggleDay(this)">五</span>
         <span class="day-chip" data-d="6" onclick="toggleDay(this)">六</span>
         <span class="day-chip" data-d="7" onclick="toggleDay(this)">日</span>
+        <span class="day-chip" data-d="8" onclick="toggleDay(this)" style="border-color:var(--danger);color:var(--danger);" title="行事曆定義為假日的那天才會跑">假日</span>
+        <span class="day-chip" data-d="9" onclick="toggleDay(this)" style="border-color:var(--green);color:var(--green);" title="行事曆定義為收假日的那天才會跑">收假日</span>
       </div>
     </div>
 
@@ -740,7 +789,7 @@ function startSession(user){
 
 // ── Navigation ────────────────────────────────────────────────
 // 頁面權限設定
-const ADMIN_ONLY_PANELS    = ['stops','api','accounts','site-settings']; // 需 admin 角色
+const ADMIN_ONLY_PANELS    = ['stops','api','accounts','site-settings','calendar']; // 需 admin 角色
 const SUPERADMIN_ONLY_PANELS = ['api','accounts'];       // 只有 username=admin 帳號
 
 function canViewPanel(name){
@@ -772,6 +821,7 @@ async function loadAll(){
   if(SESSION_USER?.role==='admin'){
     await loadAccounts();
     await loadSiteSettings();
+    await loadCalendarDates();
   }
   checkTDXStatus();
 }
@@ -903,36 +953,70 @@ async function loadSchoolRoutes(){
   } catch(e){ console.error('loadSchoolRoutes:',e); }
 }
 
+let COLLAPSED_ROUTES = new Set(); // 記住哪些路線目前是收合狀態，重新渲染時維持
+
 function renderSchoolRoutes(){
   const el=document.getElementById('school-routes-list');
   if(!el) return;
   if(!SCHOOL_ROUTES.length){ el.innerHTML='<p style="color:var(--gray);text-align:center;padding:1.5rem;">尚無校內班車路線</p>'; return; }
-  el.innerHTML=SCHOOL_ROUTES.map(route=>`
+  el.innerHTML=SCHOOL_ROUTES.map(route=>{
+    const collapsed = COLLAPSED_ROUTES.has(route.id);
+    return `
     <div class="card" style="margin-bottom:.75rem;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem;">
-        <div>
-          <span style="font-size:1rem;font-weight:600;">${esc(route.name_zh)}</span>
-          <span style="font-size:.8rem;color:var(--gray);margin-left:.5rem;">${esc(route.name_en)}</span>
-          <span class="badge ${route.active?'badge-active':'badge-inactive'}" style="margin-left:.5rem;">${route.active?'啟用':'停用'}</span>
-          ${route.note?`<span style="font-size:.75rem;color:var(--gray);margin-left:.5rem;">📝 ${esc(route.note)}</span>`:''}
+        <div style="display:flex;align-items:flex-start;gap:.5rem;">
+          <button class="btn btn-outline btn-sm" id="route-toggle-${route.id}" style="padding:2px 9px;" title="收合／展開" onclick="toggleRouteCollapse('${route.id}')">${collapsed?'▶':'▼'}</button>
+          <div>
+            <span style="font-size:1rem;font-weight:600;">${esc(route.name_zh)}</span>
+            <span style="font-size:.8rem;color:var(--gray);margin-left:.5rem;">${esc(route.name_en)}</span>
+            <span class="badge ${route.active?'badge-active':'badge-inactive'}" style="margin-left:.5rem;">${route.active?'啟用':'停用'}</span>
+            <span style="font-size:.75rem;color:var(--gray);margin-left:.5rem;">（${route.trips.length} 個班次）</span>
+            ${route.note?`<span style="font-size:.75rem;color:var(--gray);margin-left:.5rem;">📝 ${esc(route.note)}</span>`:''}
+          </div>
         </div>
         <div class="actions">
           <button class="btn btn-outline btn-sm" onclick="openRouteModal('${route.id}')">編輯路線</button>
           <button class="btn btn-primary btn-sm" onclick="openTripModal('${route.id}')">＋ 新增班次</button>
         </div>
       </div>
-      ${route.trips.length?`
-      <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.6rem;padding-bottom:.6rem;border-bottom:1px dashed var(--bd);">
-        <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:var(--gray);cursor:pointer;">
-          <input type="checkbox" onchange="toggleAllTrips('${route.id}',this.checked)"> 全選本路線班次
-        </label>
-        <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" id="batch-del-btn-${route.id}" disabled onclick="deleteTripsBatch('${route.id}')">批次刪除已選班次（0）</button>
-      </div>` : ''}
-      <div>
-        ${route.trips.length?route.trips.map(trip=>renderTripItem(route,trip)).join('')
-          :'<p style="font-size:.82rem;color:var(--gray);">尚無班次，請點「新增班次」。</p>'}
+      <div id="route-body-${route.id}" style="display:${collapsed?'none':''};">
+        ${route.trips.length?`
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.6rem;padding-bottom:.6rem;border-bottom:1px dashed var(--bd);">
+          <label style="display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:var(--gray);cursor:pointer;">
+            <input type="checkbox" onchange="toggleAllTrips('${route.id}',this.checked)"> 全選本路線班次
+          </label>
+          <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" id="batch-del-btn-${route.id}" disabled onclick="deleteTripsBatch('${route.id}')">批次刪除已選班次（0）</button>
+        </div>` : ''}
+        <div>
+          ${route.trips.length?route.trips.map(trip=>renderTripItem(route,trip)).join('')
+            :'<p style="font-size:.82rem;color:var(--gray);">尚無班次，請點「新增班次」。</p>'}
+        </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+// 收合／展開單一路線
+function toggleRouteCollapse(routeId){
+  const body = document.getElementById(`route-body-${routeId}`);
+  const btn = document.getElementById(`route-toggle-${routeId}`);
+  if(!body) return;
+  const collapsed = body.style.display==='none';
+  body.style.display = collapsed?'':'none';
+  if(btn) btn.textContent = collapsed?'▼':'▶';
+  if(collapsed) COLLAPSED_ROUTES.delete(routeId); else COLLAPSED_ROUTES.add(routeId);
+}
+
+// 全部收合／全部展開
+function collapseAllRoutes(collapse){
+  SCHOOL_ROUTES.forEach(route=>{
+    const body = document.getElementById(`route-body-${route.id}`);
+    const btn = document.getElementById(`route-toggle-${route.id}`);
+    if(!body) return;
+    body.style.display = collapse?'none':'';
+    if(btn) btn.textContent = collapse?'▶':'▼';
+    if(collapse) COLLAPSED_ROUTES.add(route.id); else COLLAPSED_ROUTES.delete(route.id);
+  });
 }
 
 // 全選／取消全選 本路線班次
@@ -979,12 +1063,25 @@ async function deleteTripsBatch(routeId){
   }
 }
 
+// 把 days 字串（1-7=星期一~日，8=假日，9=收假日）轉成好讀的文字
+function formatDaysLabel(daysStr){
+  if(!daysStr) return '（未設定）';
+  const chars=[...daysStr];
+  const weekdayMap=['','一','二','三','四','五','六','日'];
+  const weekdays=chars.filter(d=>+d>=1&&+d<=7).map(d=>weekdayMap[+d]).join('');
+  const parts=[];
+  if(weekdays) parts.push('週'+weekdays);
+  if(chars.includes('8')) parts.push('假日');
+  if(chars.includes('9')) parts.push('收假日');
+  return parts.join('、');
+}
+
 function renderTripItem(route, trip){
   const stopsStr = trip.stops.map(s=>{
     const stop = ALL_STOPS.find(x=>x.id===s.stop_id);
     return `${stop?.name_zh||s.stop_id} <span style="color:var(--orange);font-weight:600;">${s.arrive_time}</span>`;
   }).join(' → ');
-  const daysStr = trip.days?[...trip.days].map(d=>['','一','二','三','四','五','六','日'][+d]).join(''):'';
+  const daysStr = formatDaysLabel(trip.days);
   const depTime = trip.stops[0]?.arrive_time||'';
   const isCustom = trip.custom_intervals && Object.keys(trip.custom_intervals).length>0;
   return `<div class="trip-item">
@@ -992,7 +1089,7 @@ function renderTripItem(route, trip){
       <input type="checkbox" class="trip-check" data-route="${esc(route.id)}" data-trip="${esc(trip.id)}" onchange="updateBatchDeleteBar('${esc(route.id)}')" style="margin-top:.35rem;flex:none;">
       <div class="trip-info">
         <div class="trip-time">${depTime} 發車 ${isCustom?'<span style="font-size:.72rem;color:var(--orange);margin-left:4px;">✏️ 已手動調整</span>':''}</div>
-        <div class="trip-days">行駛日：週${daysStr}</div>
+        <div class="trip-days">行駛日：${daysStr}</div>
         <div class="trip-stops">${stopsStr}</div>
       </div>
     </label>
@@ -2012,6 +2109,70 @@ async function saveSiteSettings(){
     msg.style.color = 'var(--danger)';
     msg.textContent = '儲存失敗：'+e.message;
   }
+}
+
+// ── 假日行事曆（僅 admin）────────────────────────────────────────
+let CALENDAR_DATES = [];
+
+async function loadCalendarDates(){
+  try {
+    const res = await api('GET','/api/schedule-admin?resource=calendar_dates');
+    CALENDAR_DATES = res.data||[];
+    renderCalendarDates();
+  } catch(e){
+    console.error('loadCalendarDates error:', e);
+  }
+}
+
+function renderCalendarDates(){
+  const tbody = document.getElementById('cal-tbody');
+  if(!tbody) return;
+  if(!CALENDAR_DATES.length){
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--gray);padding:1.2rem;">尚未設定任何特殊日期</td></tr>';
+    return;
+  }
+  const sorted = [...CALENDAR_DATES].sort((a,b)=>a.id<b.id?-1:1);
+  tbody.innerHTML = sorted.map(c=>`<tr>
+    <td style="font-family:monospace;">${esc(c.id)}</td>
+    <td>${c.type==='holiday'?'<span style="color:var(--danger);font-weight:600;">假日</span>':'<span style="color:var(--green);font-weight:600;">收假日</span>'}</td>
+    <td style="color:var(--gray);font-size:.85rem;">${esc(c.note||'')}</td>
+    <td class="actions"><button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" onclick="deleteCalendarDate('${esc(c.id)}')">刪除</button></td>
+  </tr>`).join('');
+}
+
+async function addCalendarDate(){
+  const date = document.getElementById('cal-date').value;
+  const type = document.querySelector('input[name="cal-type"]:checked')?.value || 'holiday';
+  const note = document.getElementById('cal-note').value.trim();
+  const msg = document.getElementById('cal-msg');
+  if(!date){ msg.style.color='var(--danger)'; msg.textContent='請選擇日期'; return; }
+  msg.style.color = 'var(--gray)';
+  msg.textContent = '新增中…';
+  try {
+    // 同一天只會有一筆設定：若已存在就用 PUT 覆蓋，否則新增
+    const exists = CALENDAR_DATES.some(c=>c.id===date);
+    if(exists){
+      await api('PUT',`/api/schedule-admin?resource=calendar_dates&id=${date}`,{ type, note });
+    } else {
+      await api('POST','/api/schedule-admin?resource=calendar_dates',{ id:date, type, note });
+    }
+    document.getElementById('cal-note').value='';
+    msg.style.color = 'var(--green)';
+    msg.textContent = '已新增 ✓';
+    setTimeout(()=>{ if(msg.textContent==='已新增 ✓') msg.textContent=''; }, 3000);
+    await loadCalendarDates();
+  } catch(e){
+    msg.style.color = 'var(--danger)';
+    msg.textContent = '新增失敗：'+e.message;
+  }
+}
+
+async function deleteCalendarDate(date){
+  if(!confirm(`確定刪除 ${date} 這筆特殊日期設定？`)) return;
+  try {
+    await api('DELETE',`/api/schedule-admin?resource=calendar_dates&id=${date}`);
+    await loadCalendarDates();
+  } catch(e){ alert(e.message); }
 }
 
 function openResetPw(id,username){

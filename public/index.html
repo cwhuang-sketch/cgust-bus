@@ -440,7 +440,7 @@ footer{
       <div class="std-row">
         <div>
           <label class="field-label" id="lf" for="sf">出發站</label>
-          <div class="sw"><select id="sf" aria-required="true"></select></div>
+          <div class="sw"><select id="sf" aria-required="true" onchange="onFromChange()"></select></div>
         </div>
         <button class="swap-btn" onclick="swp()" aria-label="交換站點">⇄</button>
         <div>
@@ -467,7 +467,7 @@ footer{
 </main>
 
 <footer role="contentinfo">
-  <p id="ft">路況多變，實際抵達時間可能會有3-5分鐘誤差。 | Due to traffic, arrival time may vary by 3–5 minutes.</p>
+  <p id="ft">資料僅供參考，實際班次以現場為準 | For reference only</p>
 </footer>
 
 <script>
@@ -540,6 +540,10 @@ async function loadSchedule(){
     // 公告與備註（由後台設定，沒有內容就整區隱藏）
     renderSiteSettings(data.settings || {});
 
+    // 特殊日期行事曆（假日／收假日）
+    CALENDAR_DATES = {};
+    (data.calendar_dates||[]).forEach(c=>{ CALENDAR_DATES[c.date]=c.type; });
+
     DATA_LOADED = true;
     DATA_ERROR  = false;
   } catch(e) {
@@ -579,6 +583,19 @@ function toMin(t){if(!t)return 9999;const[h,m]=t.split(':').map(Number);return h
 function nm(){const n=new Date();return n.getHours()*60+n.getMinutes();}
 function dow(){const d=new Date().getDay();return d===0?7:d;}
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+// 特殊日期行事曆：由後台設定某天是「假日」或「收假日」。
+// CALENDAR_DATES: { 'YYYY-MM-DD': 'holiday' | 'makeup' }
+// 若某天有特別定義，該天只跑標記「假日/收假日」的班次，一般星期幾（1~7）的班次當天不跑。
+let CALENDAR_DATES = {};
+function getDayCode(dateStr){
+  const type = CALENDAR_DATES[dateStr];
+  if(type==='holiday') return 8;
+  if(type==='makeup') return 9;
+  const dd = new Date(dateStr+'T00:00:00');
+  const wd = dd.getDay();
+  return wd===0?7:wd;
+}
 
 // 公車 Mock 已移除，TDX 異常時回傳空陣列並由前台顯示警示
 // getMockBusTripsForStop 已移除（資料來自 Supabase）
@@ -764,7 +781,7 @@ async function renderSR(){
   if(!sel){area.innerHTML='';return;}
   area.innerHTML=`<div class="loading" role="status" aria-busy="true" aria-live="polite">🔍 ${zh?'查詢中…':'Loading…'}</div>`;
   try {
-  const d=dow(),n=nm(),schoolRes=[];
+  const d=getDayCode(today()),n=nm(),schoolRes=[];
   SCHOOL_ROUTES.forEach(r=>r.trips.forEach(trip=>{
     if(!trip.days.includes(d))return;
     const idx=trip.stops.findIndex(s=>s.id===sel);
@@ -808,13 +825,59 @@ async function renderSR(){
 function populateSel(){
   const zh=L.cur==='zh';
   const ph=`<option value="">-- ${zh?'請選擇':'Select'} --</option>`;
-  ['sf','st'].forEach(sid=>{
-    const el=document.getElementById(sid);const cur=el.value;
-    el.innerHTML=ph+ALL_STOPS.map(s=>`<option value="${s.id}">${zh?s.zh:s.en}</option>`).join('');
-    if(cur)el.value=cur;
-  });
+  const sfEl=document.getElementById('sf');
+  const curFrom=sfEl.value;
+  sfEl.innerHTML=ph+ALL_STOPS.map(s=>`<option value="${s.id}">${zh?s.zh:s.en}</option>`).join('');
+  if(curFrom)sfEl.value=curFrom;
+  onFromChange(); // 依目前出發站，重新建立「只會抵達的站點」清單
 }
-function swp(){const a=document.getElementById('sf').value,b=document.getElementById('st').value;document.getElementById('sf').value=b;document.getElementById('st').value=a;}
+
+// 找出從 fromId 出發，實際會經過（可抵達）的站點集合：
+// 校內路線看每個班次的實際停靠序，公車路線看每個方向的停靠序，
+// 只要 fromId 有出現在該序列中，該序列裡排在它之後的站都算可抵達。
+function getReachableStops(fromId){
+  const reachable=new Set();
+  SCHOOL_ROUTES.forEach(route=>{
+    route.trips.forEach(trip=>{
+      const ids=trip.stops.map(s=>s.id);
+      const fi=ids.indexOf(fromId);
+      if(fi===-1)return;
+      ids.slice(fi+1).forEach(id=>reachable.add(id));
+    });
+  });
+  BUS_ROUTES.forEach(route=>{
+    route.directions.forEach(dir=>{
+      const ids=dir.stops.map(s=>s.id);
+      const fi=ids.indexOf(fromId);
+      if(fi===-1)return;
+      ids.slice(fi+1).forEach(id=>reachable.add(id));
+    });
+  });
+  return reachable;
+}
+
+// 出發站變動時，重建「抵達站」下拉選單，只列出實際會抵達的站點
+function onFromChange(){
+  const zh=L.cur==='zh';
+  const ph=`<option value="">-- ${zh?'請選擇':'Select'} --</option>`;
+  const fromId=document.getElementById('sf').value;
+  const stEl=document.getElementById('st');
+  const curTo=stEl.value;
+
+  const candidates = fromId
+    ? ALL_STOPS.filter(s=>getReachableStops(fromId).has(s.id))
+    : ALL_STOPS; // 尚未選出發站時，維持顯示全部站點
+
+  stEl.innerHTML=ph+candidates.map(s=>`<option value="${s.id}">${zh?s.zh:s.en}</option>`).join('');
+  if(curTo && candidates.some(s=>s.id===curTo)) stEl.value=curTo; // 原本選的抵達站若仍可達，保留選取
+}
+
+function swp(){
+  const a=document.getElementById('sf').value,b=document.getElementById('st').value;
+  document.getElementById('sf').value=b;
+  onFromChange(); // 出發站變了，重建抵達站清單
+  document.getElementById('st').value=a; // 若 a 在新清單中不存在，瀏覽器會忽略此賦值
+}
 
 async function doSearch(){
   const zh=L.cur==='zh';
@@ -825,8 +888,8 @@ async function doSearch(){
   if(from===to){area.innerHTML=`<div class="card" role="alert"><p style="color:#C4520A;font-size:.95rem;">${zh?'出發站與抵達站不能相同':'Departure and arrival cannot be the same'}</p></div>`;return;}
   area.innerHTML=`<div class="loading" role="status" aria-busy="true" aria-live="polite">🔍 ${zh?'查詢中…':'Loading…'}</div>`;
   try {
-  const date=dv?new Date(dv):new Date();
-  const d=date.getDay()===0?7:date.getDay();
+  const dateStr=dv||today();
+  const d=getDayCode(dateStr);
   const n=tv?toMin(tv):nm();
   const schoolRes=[];
   SCHOOL_ROUTES.forEach(r=>r.trips.forEach(trip=>{
@@ -986,7 +1049,7 @@ function updateUI(){
   document.getElementById('ltm').textContent=zh?'時間（之後出發）':'DEPART AFTER';
   document.getElementById('bs2').textContent=zh?'查詢班次 SEARCH':'SEARCH TRIPS';
   document.getElementById('lps').textContent=zh?'選擇站點':'SELECT STOP';
-  document.getElementById('ft').textContent=zh?'路況多變，實際抵達時間可能會有3-5分鐘誤差。 | Due to traffic, arrival time may vary by 3–5 minutes.':'Due to traffic, arrival time may vary by 3–5 minutes.| 路況多變，實際抵達時間可能會有3-5分鐘誤差。';
+  document.getElementById('ft').textContent=zh?'資料僅供參考，實際班次以現場為準 | For reference only':'For reference only | 資料僅供參考';
   document.title=zh?'長庚科技大學校車查詢 | CGUST Bus Query':'CGUST Bus Query System';
 }
 
