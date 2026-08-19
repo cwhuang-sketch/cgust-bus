@@ -977,6 +977,7 @@ function renderSchoolRoutes(){
         <div class="actions">
           <button class="btn btn-outline btn-sm" onclick="openRouteModal('${route.id}')">編輯路線</button>
           <button class="btn btn-primary btn-sm" onclick="openTripModal('${route.id}')">＋ 新增班次</button>
+          <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" onclick="deleteSchoolRoute('${esc(route.id)}','${esc(route.name_zh)}')">刪除路線</button>
         </div>
       </div>
       <div id="route-body-${route.id}" style="display:${collapsed?'none':''};">
@@ -1059,6 +1060,26 @@ async function deleteTripsBatch(routeId){
     await loadSchoolRoutes();
   } catch(e){
     alert('批次刪除失敗：'+e.message);
+    await loadSchoolRoutes();
+  } finally {
+    if(btn){ btn.disabled=false; }
+  }
+}
+
+// 直接刪除整條校內路線（連同底下所有班次、各站時刻一起刪除）
+async function deleteSchoolRoute(routeId, routeName){
+  if(!confirm(`確定刪除路線「${routeName}」？此路線底下所有班次都會一併刪除，此操作無法復原。`)) return;
+  const route = SCHOOL_ROUTES.find(r=>r.id===routeId);
+  try {
+    for(const trip of route?.trips||[]){
+      const stops = trip.stops||[];
+      await Promise.all(stops.map(s=>api('DELETE',`/api/schedule-admin?resource=trip_stops&id=${s.id}`)));
+      await api('DELETE',`/api/schedule-admin?resource=school_trips&id=${trip.id}`);
+    }
+    await api('DELETE',`/api/schedule-admin?resource=school_routes&id=${routeId}`);
+    await loadSchoolRoutes();
+  } catch(e){
+    alert('刪除路線失敗：'+e.message);
     await loadSchoolRoutes();
   }
 }
