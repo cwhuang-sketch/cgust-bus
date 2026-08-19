@@ -148,7 +148,9 @@ export default async function handler(req, res) {
         bus_directions: ['route_id','direction','desc_zh','desc_en','seq','stop_id','tdx_stop_name'],
         calendar_dates: ['id','type'],
       };
-      const missing = (required[resource] || []).filter(f => !body[f]);
+      // 用「是否為 undefined/null/空字串」判斷缺漏，而不是單純的 truthy 檢查，
+      // 否則像 direction=0（去程）、seq=0 這種合法的 0 值會被誤判成「缺少必填欄位」。
+      const missing = (required[resource] || []).filter(f => body[f] === undefined || body[f] === null || body[f] === '');
       if (missing.length) return res.status(400).json({ error: `缺少必填欄位: ${missing.join(', ')}` });
 
       // 驗證縣市代碼
