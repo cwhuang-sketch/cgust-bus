@@ -1481,16 +1481,16 @@ async function saveEditTrip(){
       custom_intervals: hasCustom ? customIntervals : null
     });
 
-    // 刪除舊的 trip_stops，重新建立
+    // 先新增新的 trip_stops，確定都成功之後才刪除舊的，避免中途失敗時舊資料被清空、新資料卻沒寫入
     const oldStops = await api('GET',`/api/schedule-admin?resource=trip_stops&trip_id=${tripId}`);
-    for(const s of oldStops.data||[]){
-      await api('DELETE',`/api/schedule-admin?resource=trip_stops&id=${s.id}`);
-    }
     for(const s of newStops){
       await api('POST','/api/schedule-admin?resource=trip_stops',{
         trip_id:tripId, stop_id:s.stop_id,
         arrive_time:s.arrive_time, seq:s.seq
       });
+    }
+    for(const s of oldStops.data||[]){
+      await api('DELETE',`/api/schedule-admin?resource=trip_stops&id=${s.id}`);
     }
 
     closeModal('edit-trip-modal');
@@ -1981,23 +1981,40 @@ async function saveBusRoute(){
   }
   if(!directions.length){ errEl.textContent='請至少設定一個方向的停靠站'; return; }
 
+  const btn=document.querySelector('#bus-modal .btn-primary');
+  if(btn){ btn.disabled=true; btn.textContent='儲存中…'; }
+
   try {
     let routeId=id;
     const routeBody={route_no:routeNo,operator_zh:opZh,operator_en:opEn,tdx_city:city,tdx_route_name:tdxName,route_url:url,note,active:true};
     if(id){
       await api('PUT',`/api/schedule-admin?resource=bus_routes&id=${id}`,routeBody);
-      // Delete old directions
-      const oldDirs=await api('GET',`/api/schedule-admin?resource=bus_directions&route_id=${id}`);
-      for(const d of oldDirs.data||[]) await api('DELETE',`/api/schedule-admin?resource=bus_directions&id=${d.id}`);
     } else {
       const newRoute=await api('POST','/api/schedule-admin?resource=bus_routes',routeBody);
       routeId=newRoute.data?.id;
       if(!routeId) throw new Error('建立路線失敗');
     }
+
+    // 若是編輯既有路線，先記下「目前舊的」停靠站 id（此時還不刪除）
+    let oldDirIds=[];
+    if(id){
+      const oldDirs=await api('GET',`/api/schedule-admin?resource=bus_directions&route_id=${id}`);
+      oldDirIds=(oldDirs.data||[]).map(d=>d.id);
+    }
+
+    // 先新增新的停靠站設定，確定都成功之後，才用剛剛記下的舊 id 清單刪除舊資料——
+    // 避免中途失敗時（不管什麼原因）舊資料已經被刪掉、新資料卻沒寫入，導致資料整個消失。
     for(const d of directions) await api('POST','/api/schedule-admin?resource=bus_directions',{...d,route_id:routeId});
+    for(const did of oldDirIds) await api('DELETE',`/api/schedule-admin?resource=bus_directions&id=${did}`);
+
     closeModal('bus-modal');
     await loadBusRoutes();
-  } catch(e){ errEl.textContent=e.message; }
+  } catch(e){
+    errEl.textContent=e.message;
+    errEl.scrollIntoView({behavior:'smooth',block:'nearest'});
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='儲存'; }
+  }
 }
 
 async function toggleBusRoute(id,active){
