@@ -597,6 +597,12 @@ tr:hover td{background:#fafafa;}
     <hr style="border:.5px solid var(--bd);margin:.75rem 0;">
     <p style="font-size:.88rem;font-weight:600;margin-bottom:.75rem;">停靠校內站點設定</p>
     <p class="hint" style="margin-bottom:.75rem;">設定各行駛方向停靠哪些校內站點，TDX 將以此對應即時資料。</p>
+    <div style="margin-bottom:.75rem;">
+      <button class="btn btn-outline btn-sm" onclick="openTdxDirectionCheck()">🔍 查詢 TDX 路線方向，核對去程/返程是否一致</button>
+      <p class="hint" style="margin-top:.4rem;">
+        TDX 的 Direction 0／1 不一定剛好對應「去程」「返程」的直覺方向，請先用這個工具查詢該路線在 TDX 上兩個方向實際的完整停靠站序，跟下面的設定核對一下，避免方向設反。
+      </p>
+    </div>
     <div id="bm-directions-wrap">
       <div id="bm-dir-0" class="bm-dir">
         <p style="font-size:.82rem;font-weight:600;margin-bottom:.4rem;">去程 (Direction 0)</p>
@@ -649,6 +655,25 @@ tr:hover td{background:#fafafa;}
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModal('tdx-stop-modal')">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- TDX 路線方向核對 Modal -->
+<div class="modal-overlay" id="tdx-dir-modal" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:520px;">
+    <h3>核對 TDX 路線方向</h3>
+    <p class="hint" style="margin-bottom:.75rem;">
+      這是 TDX 官方資料裡，這條路線 <strong id="tdd-route-label"></strong> 兩個方向實際的完整停靠站序（依序）。
+      跟下面「去程 (Direction 0)」「返程 (Direction 1)」的起訖站比對一下：如果對不起來，代表你設定的方向可能跟 TDX 是反的，會導致即時到站資料顯示在錯的方向。
+      也可以直接按「套用為方向描述」，用 TDX 的起訖站名稱自動帶入方向描述欄位。
+    </p>
+    <p class="lerr" id="tdd-err" style="min-height:1.2em;"></p>
+    <div id="tdd-results">
+      <p class="hint" style="padding:.75rem;margin:0;">查詢中…</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('tdx-dir-modal')">關閉</button>
     </div>
   </div>
 </div>
@@ -2032,6 +2057,65 @@ function pickTdxStop(name){
   closeModal('tdx-stop-modal');
 }
 
+// ── TDX 路線方向核對（確認「去程/返程」跟 TDX 的 Direction 0/1 是否一致）─────
+async function openTdxDirectionCheck(){
+  const city=document.getElementById('bm-city').value;
+  const routeNo=document.getElementById('bm-no').value.trim();
+  const tdxName=document.getElementById('bm-tdx-name').value.trim()||routeNo;
+  const errEl=document.getElementById('tdd-err');
+  const resultsEl=document.getElementById('tdd-results');
+  errEl.textContent='';
+
+  if(!city){ alert('請先選擇 TDX 縣市'); return; }
+  if(!tdxName){ alert('請先填寫路線號碼（或 TDX 路線名稱）'); return; }
+
+  document.getElementById('tdd-route-label').textContent=`${tdxName}（${CITY_LABELS[city]||city}）`;
+  resultsEl.innerHTML='<p class="hint" style="padding:.75rem;margin:0;">查詢中…</p>';
+  openModal('tdx-dir-modal');
+
+  try {
+    const res=await api('GET',`/api/tdx-route-directions?city=${encodeURIComponent(city)}&routeName=${encodeURIComponent(tdxName)}`);
+    const dirs=res.data||[];
+    if(!dirs.length){
+      resultsEl.innerHTML='<p class="hint" style="padding:.75rem;margin:0;">TDX 查無這條路線的資料，請確認路線號碼／TDX 路線名稱是否正確。</p>';
+      return;
+    }
+    resultsEl.innerHTML=dirs.map(d=>{
+      const first=d.stops[0]?.name||'';
+      const last=d.stops[d.stops.length-1]?.name||'';
+      const firstEn=d.stops[0]?.en||'';
+      const lastEn=d.stops[d.stops.length-1]?.en||'';
+      const dirZhLabel=d.direction===0?'去程':(d.direction===1?'返程':`Direction ${d.direction}`);
+      return `
+      <div style="border:1px solid var(--bd);border-radius:var(--rs);padding:.75rem;margin-bottom:.6rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;flex-wrap:wrap;gap:.4rem;">
+          <strong style="font-size:.9rem;">TDX Direction ${esc(String(d.direction))}（一般對應「${dirZhLabel}」）</strong>
+          <button class="btn btn-outline btn-sm" onclick='applyTdxDirection(${d.direction},${JSON.stringify(first)},${JSON.stringify(last)},${JSON.stringify(firstEn)},${JSON.stringify(lastEn)})'>套用為方向描述</button>
+        </div>
+        <div style="font-size:.85rem;color:var(--orange);font-weight:600;margin-bottom:.4rem;">${esc(first)} → ${esc(last)}</div>
+        <div style="font-size:.78rem;color:var(--gray);line-height:1.7;">${d.stops.map(s=>esc(s.name)).join(' → ')}</div>
+      </div>`;
+    }).join('');
+  } catch(e){
+    errEl.textContent=e.message;
+    resultsEl.innerHTML='';
+  }
+}
+
+// 把 TDX 查到的起訖站名稱，套用到對應方向（0=去程/1=返程）的方向描述欄位
+function applyTdxDirection(direction, first, last, firstEn, lastEn){
+  if(direction===1){
+    const cb=document.getElementById('bm-has-return');
+    if(cb && !cb.checked){ cb.checked=true; toggleReturnDir(); } // 自動勾選「加入返程方向」，免得套用了看不到
+  }
+  const target=document.getElementById(`bm-dir-${direction}`);
+  if(!target) return;
+  const zhEl=target.querySelector('.bm-desc-zh');
+  const enEl=target.querySelector('.bm-desc-en');
+  if(zhEl) zhEl.value=`${first}→${last}`;
+  if(enEl && firstEn && lastEn) enEl.value=`${firstEn}→${lastEn}`;
+}
+
 async function saveBusRoute(){
   const id=document.getElementById('bm-id').value;
   const routeNo=document.getElementById('bm-no').value.trim();
@@ -2094,8 +2178,9 @@ async function saveBusRoute(){
 
     // 先新增新的停靠站設定，確定都成功之後，才用剛剛記下的舊 id 清單刪除舊資料——
     // 避免中途失敗時（不管什麼原因）舊資料已經被刪掉、新資料卻沒寫入，導致資料整個消失。
-    for(const d of directions) await api('POST','/api/schedule-admin?resource=bus_directions',{...d,route_id:routeId});
-    for(const did of oldDirIds) await api('DELETE',`/api/schedule-admin?resource=bus_directions&id=${did}`);
+    // 新增／刪除各自平行送出（不要一筆一筆序列等待），是儲存速度的關鍵。
+    await Promise.all(directions.map(d=>api('POST','/api/schedule-admin?resource=bus_directions',{...d,route_id:routeId})));
+    await Promise.all(oldDirIds.map(did=>api('DELETE',`/api/schedule-admin?resource=bus_directions&id=${did}`)));
 
     closeModal('bus-modal');
     await loadBusRoutes();
