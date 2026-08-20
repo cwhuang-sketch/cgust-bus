@@ -46,14 +46,8 @@ async function getTDXToken() {
 // ── 允許的縣市白名單 ──────────────────────────────────────
 const ALLOWED_CITIES = new Set(['Taoyuan', 'NewTaipei', 'Taipei', 'Keelung']);
 
-// ── 站名清單（允許查詢的站牌）────────────────────────────
-const ALLOWED_STOPS = new Set([
-  '長庚轉運站', '長庚醫院', '體育大學', 'A7長庚',
-  '長庚科技大學', '長庚大學',
-]);
-
 function sanitizeText(str) {
-  // 只允許中文、英文、數字、空白
+  // 只允許中文、英文、數字、空白，且長度合理（1~50字），防止注入或濫用查詢
   return /^[一-龥a-zA-Z0-9\s]{1,50}$/.test(str);
 }
 
@@ -88,9 +82,6 @@ export default async function handler(req, res) {
   }
   if (!ALLOWED_CITIES.has(city)) {
     return res.status(400).json({ error: 'Invalid city parameter' });
-  }
-  if (!ALLOWED_STOPS.has(stop)) {
-    return res.status(400).json({ error: 'Invalid stop parameter' });
   }
   if (!sanitizeText(stop)) {
     return res.status(400).json({ error: 'Invalid stop name format' });
