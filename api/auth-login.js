@@ -162,7 +162,7 @@ export default async function handler(req, res) {
     // 登入成功：建立 Session
     clearLoginAttempts(username);
     const token = generateToken();
-    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(); // 2小時
+    const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8小時（原本 2 小時偏短，資料建置常常一次要花較久時間）
 
     const sessionRes = await fetch(
       `${supabaseUrl}/rest/v1/sessions`,
