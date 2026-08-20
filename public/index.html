@@ -677,9 +677,10 @@ async function getBusTripsForStop(sid){
 
     // 同一站可能跨兩個縣市（例如候車亭有桃園和新北的公車）→ 平行查詢，不要一個一個等
     const cities = [...new Set(relevantRoutes.map(r=>r.tdxCity))];
+    let hadError=false;
     const jsonList = await Promise.all(cities.map(city=>
       cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`)
-        .catch(e=>{console.error('TDX proxy error:',e);return null;})
+        .catch(e=>{console.error('TDX proxy error:',e);hadError=true;return null;})
     ));
     const allArrivals = [];
     jsonList.forEach(json=>{ if(json) allArrivals.push(...(json.data||[])); });
@@ -704,7 +705,9 @@ async function getBusTripsForStop(sid){
         plateNo:a.PlateNumb||''
       });
     });
-    return results.sort((a,b)=>a.estSeconds-b.estSeconds);
+    const sorted = results.sort((a,b)=>a.estSeconds-b.estSeconds);
+    if(hadError) sorted.push({ isError:true, errorMsg:'部分公車即時資料查詢失敗' });
+    return sorted;
   } catch(e) {
     console.error('getBusTripsForStop error:', e);
     return [{ isError: true, errorMsg: e.message }];
@@ -731,9 +734,10 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
     if(!tasks.length) return [];
 
     // 平行呼叫；相同縣市＋站名的請求會透過 cachedFetch 自動共用同一個結果，不會重複打 API
+    let hadError=false;
     const jsonResults = await Promise.all(tasks.map(t=>
       cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(t.route.tdxCity)}&stop=${encodeURIComponent(t.fromTdxName)}`)
-        .catch(e=>{ console.error('TDX proxy error:', e); return null; })
+        .catch(e=>{ console.error('TDX proxy error:', e); hadError=true; return null; })
     ));
 
     const results = [];
@@ -753,7 +757,9 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
             stops:t.dir.stops.map(id=>({id})), fi:t.fi, ti:t.ti});
         });
     });
-    return results.sort((a,b)=>a.estSeconds-b.estSeconds);
+    const sorted = results.sort((a,b)=>a.estSeconds-b.estSeconds);
+    if(hadError) sorted.push({ isError:true, errorMsg:'部分公車即時資料查詢失敗' });
+    return sorted;
   } catch(e) {
     console.error('getBusTripsForRoute error:', e);
     return [{ isError: true, errorMsg: e.message }];

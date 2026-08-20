@@ -2345,11 +2345,10 @@ async function checkTDXStatus(){
 function openModal(id){ document.getElementById(id).classList.add('open'); }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 
-// Close on overlay click
+// 注意：故意不做「點背景遮罩就關閉」，避免使用者編輯到一半，
+// 不小心點到編輯視窗外面，整個表單內容就被關掉、要重填。
+// 只保留 Esc 鍵可以關閉（使用者明確按鍵才視為「我要離開」）。
 document.addEventListener('DOMContentLoaded',function(){
-  document.querySelectorAll('.modal-overlay').forEach(el=>{
-    el.addEventListener('click',function(e){ if(e.target===this) this.classList.remove('open'); });
-  });
   document.addEventListener('keydown',e=>{
     if(e.key==='Escape') document.querySelectorAll('.modal-overlay.open').forEach(el=>el.classList.remove('open'));
   });
