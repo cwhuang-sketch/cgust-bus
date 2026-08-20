@@ -630,6 +630,29 @@ tr:hover td{background:#fafafa;}
   </div>
 </div>
 
+<!-- TDX 站牌查詢 Modal -->
+<div class="modal-overlay" id="tdx-stop-modal" role="dialog" aria-modal="true">
+  <div class="modal" style="max-width:420px;">
+    <h3>查詢 TDX 官方站牌名稱</h3>
+    <p class="hint" style="margin-bottom:.75rem;">直接向 TDX 查詢目前縣市（<span id="tss-city-label"></span>）底下符合關鍵字的官方站牌，點選結果就會自動帶入，確保名稱完全正確、不會打錯字。</p>
+    <input type="hidden" id="tss-city-code">
+    <div class="fg">
+      <label>關鍵字</label>
+      <div style="display:flex;gap:.5rem;">
+        <input type="text" id="tss-keyword" placeholder="例：長庚、體育大學" style="flex:1;padding:8px 10px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.9rem;" onkeydown="if(event.key==='Enter'){event.preventDefault();searchTdxStops();}">
+        <button class="btn btn-primary btn-sm" onclick="searchTdxStops()">查詢</button>
+      </div>
+    </div>
+    <p class="lerr" id="tss-err" style="min-height:1.2em;"></p>
+    <div id="tss-results" style="max-height:280px;overflow-y:auto;border:1px solid var(--bd);border-radius:var(--rs);">
+      <p class="hint" style="padding:.75rem;margin:0;">輸入關鍵字後按查詢，或按 Enter。</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('tdx-stop-modal')">關閉</button>
+    </div>
+  </div>
+</div>
+
 <!-- 站點 Modal -->
 <div class="modal-overlay" id="stop-modal" role="dialog" aria-modal="true">
   <div class="modal">
@@ -690,7 +713,7 @@ let SESSION_TOKEN = sessionStorage.getItem('admin_token') || null;
 let SESSION_USER  = null;
 let SESSION_TIMEOUT = null;
 let _activityHandler = null;
-const SESSION_MINUTES = 30;
+const SESSION_MINUTES = 60; // 原本 30 分鐘，查 TDX 站牌名稱常常要切到別的分頁查一下，30 分鐘太容易被閒置登出
 
 let ALL_STOPS = [];
 let SCHOOL_ROUTES = [];
@@ -711,8 +734,23 @@ async function api(method, path, body){
   if(body) opts.body = JSON.stringify(body);
   const r = await fetch(path, opts);
   const data = await r.json().catch(()=>({}));
+  if(r.status===401){
+    // 登入 session 過期（2 小時），把使用者導回登入畫面，並給清楚的中文提示，
+    // 不要讓「Authentication required」這種原始錯誤直接冒出來。
+    handleSessionExpired();
+    throw new Error('登入已逾時，請重新登入後再試一次（剛才輸入到一半的內容可能需要重新填寫）');
+  }
   if(!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
   return data;
+}
+
+function handleSessionExpired(){
+  if(SESSION_TIMEOUT) clearInterval(SESSION_TIMEOUT);
+  if(_activityHandler) ['click','keydown','mousemove','touchstart'].forEach(ev=>document.removeEventListener(ev,_activityHandler));
+  SESSION_TOKEN=null; SESSION_USER=null;
+  sessionStorage.removeItem('admin_token');
+  document.getElementById('ls').style.display='flex';
+  document.getElementById('app').style.display='none';
 }
 
 function showAlert(el, type, msg){
@@ -1922,8 +1960,9 @@ function addBusStop(dirIdx){ addBusStopRow(dirIdx,'',''); }
 function addBusStopRow(dirIdx,stopId,tdxName){
   const list=document.getElementById(`bm-stops-${dirIdx}`);
   if(!list) return;
+  const rowId = `bmstop-${dirIdx}-${Date.now()}-${Math.floor(Math.random()*10000)}`;
   const row=document.createElement('div');
-  row.style.cssText='display:grid;grid-template-columns:1fr 1fr auto;gap:.4rem;margin-bottom:.4rem;align-items:center;';
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr auto auto;gap:.4rem;margin-bottom:.4rem;align-items:center;';
   const stopOpts=ALL_STOPS.map(s=>`<option value="${esc(s.id)}" ${s.id===stopId?'selected':''}>${esc(s.name_zh)}</option>`).join('');
   row.innerHTML=`
     <div><label style="font-size:.72rem;color:var(--gray);">校內站點</label>
@@ -1931,15 +1970,66 @@ function addBusStopRow(dirIdx,stopId,tdxName){
         <option value="">-- 選擇 --</option>${stopOpts}
       </select></div>
     <div><label style="font-size:.72rem;color:var(--gray);">TDX 站牌名稱</label>
-      <input type="text" value="${esc(tdxName)}" placeholder="例：長庚大學"
+      <input type="text" id="${rowId}" value="${esc(tdxName)}" placeholder="例：長庚大學"
         style="width:100%;padding:6px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:.85rem;"></div>
-    <button onclick="this.parentElement.remove()" style="margin-top:1.2rem;padding:6px 10px;background:var(--dl);color:var(--danger);border:none;border-radius:6px;cursor:pointer;font-size:.9rem;">✕</button>`;
+    <button type="button" onclick="openTdxStopSearch('${rowId}')" title="查詢 TDX 官方站牌名稱" style="margin-top:1.2rem;padding:6px 10px;background:var(--grl);border:1.5px solid var(--bd);border-radius:6px;cursor:pointer;font-size:.9rem;">🔍</button>
+    <button type="button" onclick="this.parentElement.remove()" style="margin-top:1.2rem;padding:6px 10px;background:var(--dl);color:var(--danger);border:none;border-radius:6px;cursor:pointer;font-size:.9rem;">✕</button>`;
   list.appendChild(row);
 }
 
 function toggleReturnDir(){
   const show=document.getElementById('bm-has-return').checked;
   document.getElementById('bm-dir-1').style.display=show?'':'none';
+}
+
+// ── TDX 站牌查詢（用來確認官方站牌名稱，避免手動輸入打錯字）─────────
+const CITY_LABELS={ Taoyuan:'桃園市', NewTaipei:'新北市', Taipei:'臺北市', Keelung:'基隆市' };
+let tdxStopSearchTarget=null;
+
+function openTdxStopSearch(inputId){
+  const city=document.getElementById('bm-city').value;
+  if(!city){ alert('請先在上方選擇 TDX 縣市，再查詢站牌'); return; }
+  tdxStopSearchTarget=inputId;
+  document.getElementById('tss-city-code').value=city;
+  document.getElementById('tss-city-label').textContent=CITY_LABELS[city]||city;
+  document.getElementById('tss-keyword').value='';
+  document.getElementById('tss-err').textContent='';
+  document.getElementById('tss-results').innerHTML='<p class="hint" style="padding:.75rem;margin:0;">輸入關鍵字後按查詢，或按 Enter。</p>';
+  openModal('tdx-stop-modal');
+  setTimeout(()=>document.getElementById('tss-keyword').focus(),50);
+}
+
+async function searchTdxStops(){
+  const city=document.getElementById('tss-city-code').value;
+  const keyword=document.getElementById('tss-keyword').value.trim();
+  const errEl=document.getElementById('tss-err');
+  const resultsEl=document.getElementById('tss-results');
+  errEl.textContent='';
+  if(!keyword){ errEl.textContent='請輸入關鍵字'; return; }
+  resultsEl.innerHTML='<p class="hint" style="padding:.75rem;margin:0;">查詢中…</p>';
+  try {
+    const res=await api('GET',`/api/tdx-stops?city=${encodeURIComponent(city)}&keyword=${encodeURIComponent(keyword)}`);
+    const stops=res.data||[];
+    if(!stops.length){
+      resultsEl.innerHTML='<p class="hint" style="padding:.75rem;margin:0;">查無符合的站牌，試試看更短的關鍵字。</p>';
+      return;
+    }
+    resultsEl.innerHTML=stops.map(s=>`
+      <div onclick="pickTdxStop('${esc(s.name)}')" style="padding:.6rem .8rem;border-bottom:1px solid var(--bd);cursor:pointer;font-size:.88rem;" onmouseover="this.style.background='var(--grl)'" onmouseout="this.style.background=''">
+        ${esc(s.name)}
+      </div>`).join('');
+  } catch(e){
+    errEl.textContent=e.message;
+    resultsEl.innerHTML='';
+  }
+}
+
+function pickTdxStop(name){
+  if(tdxStopSearchTarget){
+    const input=document.getElementById(tdxStopSearchTarget);
+    if(input) input.value=name;
+  }
+  closeModal('tdx-stop-modal');
 }
 
 async function saveBusRoute(){
