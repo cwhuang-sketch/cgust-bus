@@ -694,7 +694,9 @@ async function getBusTripsForStop(sid){
       const route = BUS_ROUTES.find(r=>r.routeNo===routeNameTdx||r.tdxRouteName===routeNameTdx);
       if(!route) return;
       const dirIdx = a.Direction??0;
-      const dir = route.directions[dirIdx];
+      // 用實際存的 direction 欄位去找，不要直接拿 TDX 回傳的 Direction 當成陣列索引
+      // （如果某條路線只設定了 Direction 1、沒有 Direction 0，陣列索引跟真正的方向編號就會對不起來）。
+      const dir = route.directions.find(d=>d.dir===dirIdx);
       if(!dir||!dir.stops.some(s=>s.id===sid)) return;
       const parsed = parseTDXArrival(a);
       if(!parsed) return;
@@ -716,19 +718,20 @@ async function getBusTripsForStop(sid){
 async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
   try {
     if(!TDX_CONFIG.ENABLED) return getMockBusTripsForRoute(fromId,toId,dowVal,afterMin);
-    const STOP_MAP = getStopMap();
 
     // 先找出所有「這一站到那一站」方向合理的 (route, direction) 組合，
     // 再一次平行送出查詢（原本是巢狀 for 迴圈逐一 await，路線一多查詢就會很慢）。
     const tasks = [];
     BUS_ROUTES.forEach(route=>{
-      route.directions.forEach((dir,di)=>{
+      route.directions.forEach(dir=>{
         const fi = dir.stops.findIndex(s=>s.id===fromId);
         const ti = dir.stops.findIndex(s=>s.id===toId);
         if(fi===-1||ti===-1||fi>=ti) return;
-        const fromTdxName = Object.entries(STOP_MAP).find(([k,v])=>v===fromId)?.[0];
+        // 直接用「這個方向、這一站」自己記錄的 TDX 站牌名稱，不要用全站反查表，
+        // 避免同一個校內站點在不同路線對應到不同 TDX 站名時查詢混淆。
+        const fromTdxName = dir.stops[fi].tdx_stop_name;
         if(!fromTdxName) return;
-        tasks.push({route, dir, di, fromTdxName, fi, ti});
+        tasks.push({route, dir, fromTdxName, fi, ti});
       });
     });
     if(!tasks.length) return [];
@@ -746,7 +749,7 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
       if(!json) return;
       const arrivals = json.data||[];
       arrivals
-        .filter(a=>(a.RouteName?.Zh_tw===t.route.routeNo||a.RouteName?.Zh_tw===t.route.tdxRouteName)&&a.Direction===t.di)
+        .filter(a=>(a.RouteName?.Zh_tw===t.route.routeNo||a.RouteName?.Zh_tw===t.route.tdxRouteName)&&a.Direction===t.dir.dir)
         .forEach(a=>{
           const parsed = parseTDXArrival(a);
           if(!parsed) return;

@@ -599,9 +599,6 @@ tr:hover td{background:#fafafa;}
     <p class="hint" style="margin-bottom:.75rem;">設定各行駛方向停靠哪些校內站點，TDX 將以此對應即時資料。</p>
     <div style="margin-bottom:.75rem;">
       <button class="btn btn-outline btn-sm" onclick="openTdxDirectionCheck()">🔍 查詢 TDX 路線方向，核對去程/返程是否一致</button>
-      <p class="hint" style="margin-top:.4rem;">
-        TDX 的 Direction 0／1 不一定剛好對應「去程」「返程」的直覺方向，請先用這個工具查詢該路線在 TDX 上兩個方向實際的完整停靠站序，跟下面的設定核對一下，避免方向設反。
-      </p>
     </div>
     <div id="bm-directions-wrap">
       <div id="bm-dir-0" class="bm-dir">
@@ -620,9 +617,6 @@ tr:hover td{background:#fafafa;}
       <div id="bm-dir-1" style="display:none;" class="bm-dir">
         <p style="font-size:.82rem;font-weight:600;margin-bottom:.4rem;">返程 (Direction 1)</p>
         <button type="button" class="btn btn-outline btn-sm" onclick="reverseFromOutbound()" style="margin-bottom:.5rem;">↩️ 用去程站序反向自動帶入</button>
-        <p class="hint" style="margin-bottom:.5rem;">
-          返程的停靠站順序必須跟去程「相反」，不能兩個方向存一樣的順序——不然順序最後一站永遠是終點，永遠查不出從它出發的可達站點。建議直接按上面按鈕自動反轉帶入，再視需要微調。
-        </p>
         <div class="form-row" style="margin-bottom:.4rem;">
           <div class="fg"><label style="font-size:.76rem;">方向描述（中）</label><input type="text" class="bm-desc-zh" placeholder="長庚大學→台北"></div>
           <div class="fg"><label style="font-size:.76rem;">方向描述（英）</label><input type="text" class="bm-desc-en" placeholder="CGU→Taipei"></div>
