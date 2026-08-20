@@ -619,6 +619,10 @@ tr:hover td{background:#fafafa;}
       </label>
       <div id="bm-dir-1" style="display:none;" class="bm-dir">
         <p style="font-size:.82rem;font-weight:600;margin-bottom:.4rem;">返程 (Direction 1)</p>
+        <button type="button" class="btn btn-outline btn-sm" onclick="reverseFromOutbound()" style="margin-bottom:.5rem;">↩️ 用去程站序反向自動帶入</button>
+        <p class="hint" style="margin-bottom:.5rem;">
+          返程的停靠站順序必須跟去程「相反」，不能兩個方向存一樣的順序——不然順序最後一站永遠是終點，永遠查不出從它出發的可達站點。建議直接按上面按鈕自動反轉帶入，再視需要微調。
+        </p>
         <div class="form-row" style="margin-bottom:.4rem;">
           <div class="fg"><label style="font-size:.76rem;">方向描述（中）</label><input type="text" class="bm-desc-zh" placeholder="長庚大學→台北"></div>
           <div class="fg"><label style="font-size:.76rem;">方向描述（英）</label><input type="text" class="bm-desc-en" placeholder="CGU→Taipei"></div>
@@ -1890,15 +1894,22 @@ async function deleteTrip(tripId, label){
 }
 
 // ── Bus Routes ────────────────────────────────────────────────
+// 效能重點跟校內路線一樣：不要每條路線各自 GET 一次停靠站，改成一次抓全部再依 route_id 分組
 async function loadBusRoutes(){
   try {
-    const data=await api('GET','/api/schedule-admin?resource=bus_routes');
-    BUS_ROUTES_DB=data.data||[];
-    // Load directions for each route
-    for(const route of BUS_ROUTES_DB){
-      const dirs=await api('GET',`/api/schedule-admin?resource=bus_directions&route_id=${route.id}`);
-      route.directions=dirs.data||[];
-    }
+    const [routesData, dirsData] = await Promise.all([
+      api('GET','/api/schedule-admin?resource=bus_routes'),
+      api('GET','/api/schedule-admin?resource=bus_directions'),
+    ]);
+    const dirsByRoute = {};
+    (dirsData.data||[]).forEach(d=>{
+      if(!dirsByRoute[d.route_id]) dirsByRoute[d.route_id]=[];
+      dirsByRoute[d.route_id].push(d);
+    });
+    BUS_ROUTES_DB = (routesData.data||[]).map(route=>({
+      ...route,
+      directions: dirsByRoute[route.id] || []
+    }));
     renderBusRoutes();
   } catch(e){ console.error('loadBusRoutes:',e); }
 }
@@ -1911,12 +1922,13 @@ function renderBusRoutes(){
       const s=ALL_STOPS.find(x=>x.id===d.stop_id);
       return s?.name_zh||d.stop_id;
     }))].join('、');
+    const noStops = r.directions.length===0;
     const urlCell=r.route_url?`<a href="${esc(r.route_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--orange);font-size:.8rem;">路線資訊</a>`:'—';
     return `<tr>
       <td><strong>${esc(r.route_no)}</strong></td>
       <td>${esc(r.operator_zh)}</td>
       <td><span class="badge" style="background:var(--grl);color:var(--gray);">${esc(r.tdx_city)}</span></td>
-      <td style="font-size:.82rem;">${esc(stopNames)}</td>
+      <td style="font-size:.82rem;">${noStops?'<span style="color:var(--danger);font-weight:600;">⚠️ 尚未設定停靠站，請進去編輯補上</span>':esc(stopNames)}</td>
       <td>${urlCell}</td>
       <td><span class="badge ${r.active?'badge-active':'badge-inactive'}">${r.active?'啟用':'停用'}</span></td>
       <td class="actions">
@@ -2005,6 +2017,29 @@ function addBusStopRow(dirIdx,stopId,tdxName){
 function toggleReturnDir(){
   const show=document.getElementById('bm-has-return').checked;
   document.getElementById('bm-dir-1').style.display=show?'':'none';
+}
+
+// 把去程 (Direction 0) 目前設定的停靠站，反向後帶入返程 (Direction 1)。
+// 這是「可達站點」功能能不能正常運作的關鍵：返程順序如果沒有真的反過來，
+// 去程最後一站在兩個方向都會是終點，永遠查不出從它出發的可達站點。
+function reverseFromOutbound(){
+  const cb=document.getElementById('bm-has-return');
+  if(cb && !cb.checked){ cb.checked=true; toggleReturnDir(); }
+
+  const srcList=document.getElementById('bm-stops-0');
+  const rows=[...srcList.querySelectorAll(':scope > div')];
+  if(!rows.length){ alert('請先設定去程的停靠站，再用這個按鈕反向帶入返程'); return; }
+
+  const data=rows.map(row=>({
+    stopId: row.querySelector('select').value,
+    tdxName: row.querySelector('input').value
+  })).filter(d=>d.stopId&&d.tdxName).reverse();
+
+  if(!data.length){ alert('去程的停靠站尚未填完整（校內站點跟 TDX 站牌名稱都要選/填），請先補齊'); return; }
+
+  const dstList=document.getElementById('bm-stops-1');
+  dstList.innerHTML='';
+  data.forEach(d=>addBusStopRow(1,d.stopId,d.tdxName));
 }
 
 // ── TDX 站牌查詢（用來確認官方站牌名稱，避免手動輸入打錯字）─────────
