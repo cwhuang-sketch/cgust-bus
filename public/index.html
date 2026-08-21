@@ -757,7 +757,7 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
           if(depMin<afterMin) return;
           results.push({routeNo:t.route.routeNo, route:t.route, dir:t.dir,
             depTime:parsed.arrivalTime, isLive:true, estSeconds:parsed.estSeconds,
-            stops:t.dir.stops.map(id=>({id})), fi:t.fi, ti:t.ti});
+            stops:t.dir.stops, fi:t.fi, ti:t.ti});
         });
     });
     const sorted = results.sort((a,b)=>a.estSeconds-b.estSeconds);
