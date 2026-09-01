@@ -697,7 +697,10 @@ async function getBusTripsForStop(sid){
       // 用實際存的 direction 欄位去找，不要直接拿 TDX 回傳的 Direction 當成陣列索引
       // （如果某條路線只設定了 Direction 1、沒有 Direction 0，陣列索引跟真正的方向編號就會對不起來）。
       const dir = route.directions.find(d=>d.dir===dirIdx);
-      if(!dir||!dir.stops.some(s=>s.id===sid)) return;
+      if(!dir) return;
+      const stopIdx = dir.stops.findIndex(s=>s.id===sid);
+      if(stopIdx===-1) return;
+      if(stopIdx===dir.stops.length-1) return; // 選到的站是這個方向的最後一站（末站），不可能上車，跳過
       const parsed = parseTDXArrival(a);
       if(!parsed) return;
       results.push({
@@ -795,6 +798,7 @@ async function renderSR(){
     if(!trip.days.includes(d))return;
     const idx=trip.stops.findIndex(s=>s.id===sel);
     if(idx===-1)return;
+    if(idx===trip.stops.length-1)return; // 選到的站是這班次的最後一站，不可能上車，跳過
     if(toMin(trip.stops[idx].t)<n)return;
     schoolRes.push({kind:'school',r,trip,idx});
   }));
