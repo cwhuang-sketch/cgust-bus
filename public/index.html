@@ -666,48 +666,99 @@ function getStopMap(){
   return map;
 }
 
+// 在同一批候選到站資料中，找出「同一輛車」在後續校內站點的到站資料。
+// 比對依據：同路線＋同方向＋（若有車牌資料）同車牌，且到站時間不早於前一站（容許 60 秒誤差，避免衛星定位/時間誤差誤判）。
+// 找不到符合資料就回傳 null，代表這個班次串接到此為止（後面的站不顯示，避免顯示錯誤配對的時間）。
+function matchDownstreamArrival(arrivals, route, dirIdx, plateNo, afterSeconds){
+  let candidates = arrivals.filter(a=>{
+    const rn = a.RouteName?.Zh_tw||'';
+    if(rn!==route.routeNo && rn!==route.tdxRouteName) return false;
+    if((a.Direction??0)!==dirIdx) return false;
+    return true;
+  });
+  if(plateNo){
+    const samePlate = candidates.filter(a=>(a.PlateNumb||'')===plateNo);
+    if(samePlate.length) candidates = samePlate; // 有車牌資料時，優先只用同一輛車的資料配對
+  }
+  let best=null;
+  candidates.forEach(a=>{
+    const parsed = parseTDXArrival(a);
+    if(!parsed) return;
+    if(parsed.estSeconds < afterSeconds-60) return; // 比前一站的到站時間還早，不可能是同一班車接下來的站
+    if(!best || parsed.estSeconds<best.estSeconds) best=parsed;
+  });
+  return best;
+}
+
 async function getBusTripsForStop(sid){
   try {
     if(!TDX_CONFIG.ENABLED || !DATA_LOADED) return [];
-    const STOP_MAP = getStopMap();
-    const tdxName = Object.entries(STOP_MAP).find(([k,v])=>v===sid)?.[0];
-    if(!tdxName) return []; // 此站無公車路線
     const relevantRoutes = BUS_ROUTES.filter(r=>r.directions.some(d=>d.stops.some(s=>s.id===sid)));
-    if(!relevantRoutes.length) return [];
+    if(!relevantRoutes.length) return []; // 此站無公車路線
 
-    // 同一站可能跨兩個縣市（例如候車亭有桃園和新北的公車）→ 平行查詢，不要一個一個等
-    const cities = [...new Set(relevantRoutes.map(r=>r.tdxCity))];
+    // 蒐集需要查詢的 (縣市, TDX 站牌名稱) 組合：包含目前站點，以及同方向「後續」會停靠的校內站點，
+    // 這樣才能把同一班車後面幾站的到站時間也串接起來顯示（比照校車巡迴線的顯示方式）。
+    const needed = new Map(); // key: city+'||'+stopName
+    relevantRoutes.forEach(route=>{
+      route.directions.forEach(dir=>{
+        const idx = dir.stops.findIndex(s=>s.id===sid);
+        if(idx===-1) return;
+        dir.stops.slice(idx).forEach(s=>{
+          if(!s.tdx_stop_name) return;
+          const key = route.tdxCity+'||'+s.tdx_stop_name;
+          if(!needed.has(key)) needed.set(key, {city:route.tdxCity, stopName:s.tdx_stop_name});
+        });
+      });
+    });
+    if(!needed.size) return [];
+
+    // 平行查詢，並透過 cachedFetch 共用重複的 (city, stop) 請求
     let hadError=false;
-    const jsonList = await Promise.all(cities.map(city=>
-      cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`)
-        .catch(e=>{console.error('TDX proxy error:',e);hadError=true;return null;})
+    const entries=[...needed.values()];
+    const jsonList = await Promise.all(entries.map(e=>
+      cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(e.city)}&stop=${encodeURIComponent(e.stopName)}`)
+        .catch(err=>{console.error('TDX proxy error:',err);hadError=true;return null;})
     ));
-    const allArrivals = [];
-    jsonList.forEach(json=>{ if(json) allArrivals.push(...(json.data||[])); });
-
-    
+    const arrivalsByKey={};
+    entries.forEach((e,i)=>{ arrivalsByKey[e.city+'||'+e.stopName] = (jsonList[i]&&jsonList[i].data)||[]; });
 
     const results = [];
-    allArrivals.forEach(a=>{
-      // 比對路線名稱（TDX 的 RouteName.Zh_tw）
-      const routeNameTdx = a.RouteName?.Zh_tw||'';
-      const route = BUS_ROUTES.find(r=>r.routeNo===routeNameTdx||r.tdxRouteName===routeNameTdx);
-      if(!route) return;
-      const dirIdx = a.Direction??0;
-      // 用實際存的 direction 欄位去找，不要直接拿 TDX 回傳的 Direction 當成陣列索引
-      // （如果某條路線只設定了 Direction 1、沒有 Direction 0，陣列索引跟真正的方向編號就會對不起來）。
-      const dir = route.directions.find(d=>d.dir===dirIdx);
-      if(!dir) return;
-      const stopIdx = dir.stops.findIndex(s=>s.id===sid);
-      if(stopIdx===-1) return;
-      if(stopIdx===dir.stops.length-1) return; // 選到的站是這個方向的最後一站（末站），不可能上車，跳過
-      const parsed = parseTDXArrival(a);
-      if(!parsed) return;
-      results.push({
-        routeNo:route.routeNo, route, dir, dirIdx,
-        stopId:sid, arrivalTime:parsed.arrivalTime,
-        isLive:true, estSeconds:parsed.estSeconds,
-        plateNo:a.PlateNumb||''
+    relevantRoutes.forEach(route=>{
+      route.directions.forEach(dir=>{
+        const idx = dir.stops.findIndex(s=>s.id===sid);
+        if(idx===-1) return;
+        if(idx===dir.stops.length-1) return; // 選到的站是這個方向的最後一站（末站），不可能上車，跳過
+        const myTdxName = dir.stops[idx].tdx_stop_name;
+        if(!myTdxName) return;
+        const myArrivals = (arrivalsByKey[route.tdxCity+'||'+myTdxName]||[]).filter(a=>{
+          const rn=a.RouteName?.Zh_tw||'';
+          if(rn!==route.routeNo && rn!==route.tdxRouteName) return false;
+          if((a.Direction??0)!==dir.dir) return false;
+          return true;
+        });
+        myArrivals.forEach(a=>{
+          const parsed = parseTDXArrival(a);
+          if(!parsed) return;
+          const plateNo = a.PlateNumb||'';
+          // 從目前站點開始，依序往後找同一班車在後續校內站點的到站時間
+          const chain=[{id:sid, t:parsed.arrivalTime}];
+          let lastSec = parsed.estSeconds;
+          for(let j=idx+1;j<dir.stops.length;j++){
+            const s = dir.stops[j];
+            if(!s.tdx_stop_name) break; // 沒對應 TDX 站牌就查不到時間，串接到此為止
+            const arrivals = arrivalsByKey[route.tdxCity+'||'+s.tdx_stop_name]||[];
+            const matched = matchDownstreamArrival(arrivals, route, dir.dir, plateNo, lastSec);
+            if(!matched) break; // 找不到可信的配對資料，後面的站不顯示
+            chain.push({id:s.id, t:matched.arrivalTime});
+            lastSec = matched.estSeconds;
+          }
+          results.push({
+            routeNo:route.routeNo, route, dir, dirIdx:dir.dir,
+            stopId:sid, arrivalTime:parsed.arrivalTime,
+            isLive:true, estSeconds:parsed.estSeconds,
+            plateNo, stops:chain
+          });
+        });
       });
     });
     const sorted = results.sort((a,b)=>a.estSeconds-b.estSeconds);
