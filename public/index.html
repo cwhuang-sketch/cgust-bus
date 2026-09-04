@@ -574,14 +574,17 @@ function renderSiteSettings(settings){
   }
 }
 
+// 統一做 HTML 逸出，避免站名/路線名稱/方向描述這類「後台可編輯的文字」被當成 HTML/JS 執行
+// （公告、備註是刻意設計成允許 HTML 的例外，其餘欄位都應該當作純文字處理）
+function esc(str){ return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 function sn(id){
   const s=ALL_STOPS.find(x=>x.id===id);
-  if(!s) return id;
-  return L.cur==='zh'?s.zh:s.en;
+  if(!s) return esc(id);
+  return esc(L.cur==='zh'?s.zh:s.en);
 }
 function toMin(t){if(!t)return 9999;const[h,m]=t.split(':').map(Number);return h*60+m;}
 function nm(){const n=new Date();return n.getHours()*60+n.getMinutes();}
-function dow(){const d=new Date().getDay();return d===0?7:d;}
 function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 
 // 特殊日期行事曆：由後台設定某天是「假日」或「收假日」。
@@ -778,11 +781,11 @@ function renderChips(){
   const zh=L.cur==='zh';
   const stops=ALL_STOPS.filter(s=>SIMPLE_STOPS.includes(s.id));
   document.getElementById('chips').innerHTML=stops.map(s=>`
-    <button class="stop-chip${sel===s.id?' selected':''}" onclick="selStop('${s.id}')"
+    <button class="stop-chip${sel===s.id?' selected':''}" onclick="selStop('${esc(s.id)}')"
       role="radio" aria-checked="${sel===s.id?'true':'false'}"
-      aria-label="${zh?s.zh:s.en}">
-      ${zh?s.zh:s.en}
-      <span class="sen" aria-hidden="true">${zh?s.en:s.zh}</span>
+      aria-label="${esc(zh?s.zh:s.en)}">
+      ${esc(zh?s.zh:s.en)}
+      <span class="sen" aria-hidden="true">${esc(zh?s.en:s.zh)}</span>
     </button>`).join('');
 }
 function selStop(id){sel=id;renderChips();renderSR();}
@@ -845,7 +848,7 @@ function populateSel(){
   const ph=`<option value="">-- ${zh?'請選擇':'Select'} --</option>`;
   const sfEl=document.getElementById('sf');
   const curFrom=sfEl.value;
-  sfEl.innerHTML=ph+ALL_STOPS.map(s=>`<option value="${s.id}">${zh?s.zh:s.en}</option>`).join('');
+  sfEl.innerHTML=ph+ALL_STOPS.map(s=>`<option value="${esc(s.id)}">${esc(zh?s.zh:s.en)}</option>`).join('');
   if(curFrom)sfEl.value=curFrom;
   onFromChange(); // 依目前出發站，重新建立「只會抵達的站點」清單
 }
@@ -886,7 +889,7 @@ function onFromChange(){
     ? ALL_STOPS.filter(s=>getReachableStops(fromId).has(s.id))
     : ALL_STOPS; // 尚未選出發站時，維持顯示全部站點
 
-  stEl.innerHTML=ph+candidates.map(s=>`<option value="${s.id}">${zh?s.zh:s.en}</option>`).join('');
+  stEl.innerHTML=ph+candidates.map(s=>`<option value="${esc(s.id)}">${esc(zh?s.zh:s.en)}</option>`).join('');
   if(curTo && candidates.some(s=>s.id===curTo)) stEl.value=curTo; // 原本選的抵達站若仍可達，保留選取
 }
 
@@ -959,9 +962,9 @@ async function doSearch(){
 
 function buildSchoolCard(route,trip,fi,ti,hs,isToday=true){
   const zh=L.cur==='zh';
-  const rn=zh?route.zh:route.en;
+  const rn=esc(zh?route.zh:route.en);
   const schoolLink = route.url
-    ? `<a href="${route.url}" target="_blank" rel="noopener noreferrer" class="route-link" aria-label="${rn} 路線資訊">${rn}</a>`
+    ? `<a href="${esc(route.url)}" target="_blank" rel="noopener noreferrer" class="route-link" aria-label="${rn} 路線資訊">${rn}</a>`
     : rn;
   const badge=`<span class="badge bs">${zh?'校車':'SCHOOL BUS'}</span>`;
   if(hs){
@@ -999,11 +1002,11 @@ function buildBusCard(item,hs,fi,ti,isToday=true){
   const zh=L.cur==='zh';
   const{route,dir,routeNo,isLive}=item;
   const dirObj=dir||(route.directions[item.dirIdx||0]);
-  const rn=zh?route.zh:route.en;
-  const dirLabel=dirObj?(zh?dirObj.zh:dirObj.en):'';
+  const rn=esc(zh?route.zh:route.en);
+  const dirLabel=dirObj?esc(zh?dirObj.zh:dirObj.en):'';
   const liveBadge=isLive?`<span class="api-badge live">即時 LIVE</span>`:`<span class="api-badge">模擬 MOCK</span>`;
   const badge=`<span class="badge bb">${zh?'市區公車':'CITY BUS'}</span>`;
-  const nameHtml=`<a href="${busInfoUrl(routeNo, route.url)}" target="_blank" rel="noopener noreferrer" class="route-link">${rn}</a>${liveBadge}`;
+  const nameHtml=`<a href="${esc(busInfoUrl(routeNo, route.url))}" target="_blank" rel="noopener noreferrer" class="route-link">${rn}</a>${liveBadge}`;
   // 用站名比對「長庚醫院」而不是寫死站點代號（S9），避免以後在後台改站點代號/重建站點導致這個提示悄悄失效
   const isCgmhStop=id=>{ const s=ALL_STOPS.find(x=>x.id===id); return s && (s.zh.includes('長庚醫院')||s.en.includes('CGMH')||s.en.includes('Chang Gung Memorial')); };
   const hasNearby=isCgmhStop(hs)||(item.stops&&item.stops.some(s=>isCgmhStop(s.id)));
