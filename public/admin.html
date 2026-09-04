@@ -491,6 +491,7 @@ tr:hover td{background:#fafafa;}
       <div style="display:flex;align-items:center;gap:.5rem;margin-top:.6rem;flex-wrap:wrap;">
         <select id="tm-add-stop-select" style="padding:6px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:.85rem;flex:1;min-width:160px;"></select>
         <button class="btn btn-outline btn-sm" onclick="addRouteStop()">＋ 加入停靠站</button>
+        <button class="btn btn-outline btn-sm" onclick="openStopModalFrom('trip-modal',buildIntervalsInputGrid)">＋ 新增站點</button>
       </div>
     </div>
 
@@ -568,6 +569,47 @@ tr:hover td{background:#fafafa;}
   </div>
 </div>
 
+<!-- 批次修改班次 Modal -->
+<div class="modal-overlay" id="batch-edit-modal" role="dialog" aria-modal="true">
+  <div class="modal" style="width:520px;">
+    <h3>批次修改班次</h3>
+    <p class="hint" style="margin-bottom:.75rem;">將對已選取的 <strong id="be-count">0</strong> 個班次套用以下修改，勾選才會套用，不勾就維持原樣。</p>
+
+    <div class="fg">
+      <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+        <input type="checkbox" id="be-days-toggle" onchange="toggleBeSection('days')"> 修改行駛日（覆蓋成以下勾選的日子）
+      </label>
+      <div class="days-wrap" id="be-days" style="margin-top:.5rem;opacity:.4;pointer-events:none;">
+        <span class="day-chip" data-d="1" onclick="toggleDay(this)">一</span>
+        <span class="day-chip" data-d="2" onclick="toggleDay(this)">二</span>
+        <span class="day-chip" data-d="3" onclick="toggleDay(this)">三</span>
+        <span class="day-chip" data-d="4" onclick="toggleDay(this)">四</span>
+        <span class="day-chip" data-d="5" onclick="toggleDay(this)">五</span>
+        <span class="day-chip" data-d="6" onclick="toggleDay(this)">六</span>
+        <span class="day-chip" data-d="7" onclick="toggleDay(this)">日</span>
+        <span class="day-chip" data-d="8" onclick="toggleDay(this)" style="border-color:var(--danger);color:var(--danger);">假日</span>
+        <span class="day-chip" data-d="9" onclick="toggleDay(this)" style="border-color:var(--green);color:var(--green);">收假日</span>
+      </div>
+    </div>
+
+    <div class="fg">
+      <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+        <input type="checkbox" id="be-shift-toggle" onchange="toggleBeSection('shift')"> 整批平移各站時間（分鐘，可負數表示提早）
+      </label>
+      <div id="be-shift-wrap" style="margin-top:.5rem;opacity:.4;pointer-events:none;">
+        <input type="number" id="be-shift-minutes" placeholder="例：5（全部延後5分鐘）或 -5（全部提早5分鐘）"
+          style="width:100%;padding:8px 10px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.9rem;">
+      </div>
+    </div>
+
+    <p class="lerr" id="be-err" style="margin:.5rem 0;min-height:1.2em;"></p>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('batch-edit-modal')">取消</button>
+      <button class="btn btn-primary" onclick="applyBatchEdit()">套用修改</button>
+    </div>
+  </div>
+</div>
+
 <!-- 公車路線 Modal -->
 <div class="modal-overlay" id="bus-modal" role="dialog" aria-modal="true">
   <div class="modal">
@@ -599,6 +641,7 @@ tr:hover td{background:#fafafa;}
     <p class="hint" style="margin-bottom:.75rem;">設定各行駛方向停靠哪些校內站點，TDX 將以此對應即時資料。</p>
     <div style="margin-bottom:.75rem;">
       <button class="btn btn-outline btn-sm" onclick="openTdxDirectionCheck()">🔍 查詢 TDX 路線方向，核對去程/返程是否一致</button>
+      <button class="btn btn-outline btn-sm" onclick="openStopModalFrom('bus-modal',refreshBusStopSelects)">＋ 新增站點</button>
     </div>
     <div id="bm-directions-wrap">
       <div id="bm-dir-0" class="bm-dir">
@@ -696,7 +739,7 @@ tr:hover td{background:#fafafa;}
     </div>
     <p class="lerr" id="sm-err" style="margin-bottom:.5rem;min-height:1.2em;"></p>
     <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('stop-modal')">取消</button>
+      <button class="btn btn-outline" onclick="closeStopModalAndReturn()">取消</button>
       <button class="btn btn-primary" onclick="saveStop()">儲存</button>
     </div>
   </div>
@@ -948,6 +991,34 @@ function openStopModal(id){
   openModal('stop-modal');
 }
 
+// 讓「路線編輯」中途可以直接新增站點，不用跳出去站點管理頁面再回來。
+// 記住是從哪個 modal 開的、儲存後要怎麼刷新該畫面，儲存/取消後會自動跳回原本的編輯視窗。
+let STOP_MODAL_RETURN_TO = null;
+function openStopModalFrom(returnModalId, refreshFn){
+  STOP_MODAL_RETURN_TO = { modalId: returnModalId, refresh: refreshFn };
+  document.getElementById(returnModalId).classList.remove('open'); // 暫時隱藏，不清空原本已填的內容
+  openStopModal(); // 一律開「新增站點」
+}
+function closeStopModalAndReturn(){
+  closeModal('stop-modal');
+  if(STOP_MODAL_RETURN_TO){
+    const {modalId}=STOP_MODAL_RETURN_TO;
+    STOP_MODAL_RETURN_TO=null;
+    document.getElementById(modalId).classList.add('open');
+  }
+}
+
+// 重新整理公車路線 modal 裡，各方向已存在的「校內站點」下拉選單（保留原本選取的值）
+function refreshBusStopSelects(){
+  document.querySelectorAll('#bm-directions-wrap .bm-stops-list > div').forEach(row=>{
+    const sel=row.querySelector('select');
+    if(!sel) return;
+    const cur=sel.value;
+    const opts=ALL_STOPS.map(s=>`<option value="${esc(s.id)}" ${s.id===cur?'selected':''}>${esc(s.name_zh)}</option>`).join('');
+    sel.innerHTML=`<option value="">-- 選擇 --</option>${opts}`;
+  });
+}
+
 async function saveStop(){
   const origId=document.getElementById('sm-orig-id').value;
   const id=document.getElementById('sm-id').value.trim().toUpperCase();
@@ -965,6 +1036,12 @@ async function saveStop(){
     }
     closeModal('stop-modal');
     await loadStops();
+    if(STOP_MODAL_RETURN_TO){
+      const {modalId, refresh}=STOP_MODAL_RETURN_TO;
+      STOP_MODAL_RETURN_TO=null;
+      document.getElementById(modalId).classList.add('open');
+      if(refresh) refresh();
+    }
   } catch(e){ errEl.textContent=e.message; }
 }
 
@@ -1048,6 +1125,7 @@ function renderSchoolRoutes(){
             <input type="checkbox" onchange="toggleAllTrips('${route.id}',this.checked)"> 全選本路線班次
           </label>
           <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" id="batch-del-btn-${route.id}" disabled onclick="deleteTripsBatch('${route.id}')">批次刪除已選班次（0）</button>
+          <button class="btn btn-outline btn-sm" id="batch-edit-btn-${route.id}" disabled onclick="openBatchEditModal('${route.id}')">批次修改已選班次（0）</button>
         </div>` : ''}
         <div>
           ${route.trips.length?route.trips.map(trip=>renderTripItem(route,trip)).join('')
@@ -1087,13 +1165,13 @@ function toggleAllTrips(routeId, checked){
   updateBatchDeleteBar(routeId);
 }
 
-// 更新「批次刪除已選班次」按鈕上的勾選數量與可用狀態
+// 更新「批次刪除／批次修改已選班次」按鈕上的勾選數量與可用狀態
 function updateBatchDeleteBar(routeId){
   const count = document.querySelectorAll(`.trip-check[data-route="${routeId}"]:checked`).length;
-  const btn = document.getElementById(`batch-del-btn-${routeId}`);
-  if(!btn) return;
-  btn.textContent = `批次刪除已選班次（${count}）`;
-  btn.disabled = count===0;
+  const delBtn = document.getElementById(`batch-del-btn-${routeId}`);
+  if(delBtn){ delBtn.textContent = `批次刪除已選班次（${count}）`; delBtn.disabled = count===0; }
+  const editBtn = document.getElementById(`batch-edit-btn-${routeId}`);
+  if(editBtn){ editBtn.textContent = `批次修改已選班次（${count}）`; editBtn.disabled = count===0; }
 }
 
 // 批次刪除所選班次：先平行刪掉每個班次底下的各站時刻，再刪班次本身
@@ -1124,6 +1202,93 @@ async function deleteTripsBatch(routeId){
     await loadSchoolRoutes();
   } finally {
     if(btn){ btn.disabled=false; }
+  }
+}
+
+// ── 批次修改班次 ──────────────────────────────────────────────
+let BATCH_EDIT_ROUTE_ID = null;
+let BATCH_EDIT_TRIP_IDS = [];
+
+function openBatchEditModal(routeId){
+  const checked = [...document.querySelectorAll(`.trip-check[data-route="${routeId}"]:checked`)];
+  if(!checked.length) return;
+  BATCH_EDIT_ROUTE_ID = routeId;
+  BATCH_EDIT_TRIP_IDS = checked.map(c=>c.dataset.trip);
+
+  document.getElementById('be-count').textContent = BATCH_EDIT_TRIP_IDS.length;
+  document.getElementById('be-days-toggle').checked=false;
+  document.querySelectorAll('#be-days .day-chip').forEach(c=>c.classList.remove('on'));
+  document.getElementById('be-shift-toggle').checked=false;
+  document.getElementById('be-shift-minutes').value='';
+  document.getElementById('be-err').textContent='';
+  toggleBeSection('days');
+  toggleBeSection('shift');
+  openModal('batch-edit-modal');
+}
+
+// 切換某個批次修改選項是否啟用（未勾選時整區用半透明+不可互動表示「不會套用」）
+function toggleBeSection(kind){
+  if(kind==='days'){
+    const on=document.getElementById('be-days-toggle').checked;
+    const wrap=document.getElementById('be-days');
+    wrap.style.opacity=on?'1':'.4';
+    wrap.style.pointerEvents=on?'':'none';
+  } else if(kind==='shift'){
+    const on=document.getElementById('be-shift-toggle').checked;
+    const wrap=document.getElementById('be-shift-wrap');
+    wrap.style.opacity=on?'1':'.4';
+    wrap.style.pointerEvents=on?'':'none';
+  }
+}
+
+async function applyBatchEdit(){
+  const errEl=document.getElementById('be-err');
+  errEl.textContent='';
+
+  const doDays = document.getElementById('be-days-toggle').checked;
+  const doShift = document.getElementById('be-shift-toggle').checked;
+  if(!doDays && !doShift){ errEl.textContent='請至少勾選一項要修改的內容'; return; }
+
+  let newDays='';
+  if(doDays){
+    newDays=[...document.querySelectorAll('#be-days .day-chip.on')].map(c=>c.dataset.d).join('');
+    if(!newDays){ errEl.textContent='請至少選擇一個行駛日'; return; }
+  }
+
+  let shiftMin=0;
+  if(doShift){
+    shiftMin=parseInt(document.getElementById('be-shift-minutes').value);
+    if(isNaN(shiftMin)||shiftMin===0){ errEl.textContent='請輸入不為 0 的分鐘數'; return; }
+  }
+
+  if(!confirm(`確定要套用到選取的 ${BATCH_EDIT_TRIP_IDS.length} 個班次？此操作無法復原。`)) return;
+
+  const route = SCHOOL_ROUTES.find(r=>r.id===BATCH_EDIT_ROUTE_ID);
+  const btn = document.querySelector('#batch-edit-modal .btn-primary');
+  if(btn){ btn.disabled=true; btn.textContent='套用中…'; }
+
+  try {
+    let done=0;
+    for(const tripId of BATCH_EDIT_TRIP_IDS){
+      const trip = route?.trips.find(t=>t.id===tripId);
+      if(doDays){
+        await api('PUT',`/api/schedule-admin?resource=school_trips&id=${tripId}`,{ days:newDays });
+      }
+      if(doShift && trip){
+        await Promise.all((trip.stops||[]).map(s=>{
+          const newMin=((toMin(s.arrive_time)+shiftMin)%1440+1440)%1440; // 用 mod 1440 處理跨午夜的情況
+          return api('PUT',`/api/schedule-admin?resource=trip_stops&id=${s.id}`,{ arrive_time:fromMin(newMin) });
+        }));
+      }
+      done++;
+      if(btn) btn.textContent=`套用中…（${done}/${BATCH_EDIT_TRIP_IDS.length}）`;
+    }
+    closeModal('batch-edit-modal');
+    await loadSchoolRoutes();
+  } catch(e){
+    errEl.textContent='套用失敗：'+e.message;
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='套用修改'; }
   }
 }
 
