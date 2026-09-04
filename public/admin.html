@@ -771,6 +771,7 @@ function esc(str){ return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&l
 
 function toMin(t){ if(!t) return 0; const[h,m]=t.split(':').map(Number); return h*60+m; }
 function fromMin(m){ const h=Math.floor(m/60)%24,mn=m%60; return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`; }
+function toggleDay(el){ el.classList.toggle('on'); }
 
 async function api(method, path, body){
   const opts = {
@@ -1793,53 +1794,6 @@ async function saveBatchTrips(){
 }
 
 
-// ── 路線間隔模板 ──────────────────────────────────────────────
-let currentRouteIntervals = {}; // { stop_id: minutes }
-
-function buildIntervalsGrid(intervals){
-  const grid = document.getElementById('rm-intervals-grid');
-  if(!grid) return;
-  grid.innerHTML = ALL_STOPS.filter(s=>s.active).map((s,i)=>`
-    <div style="padding:.35rem .5rem;background:var(--grl);border-radius:6px;font-size:.85rem;font-weight:500;">
-      ${i===0?'🚩':''} ${s.name_zh}
-    </div>
-    <div style="display:flex;align-items:center;gap:.3rem;">
-      ${i===0
-        ? '<span style="font-size:.78rem;color:var(--gray);">起站（發車點）</span>'
-        : `<input type="number" min="0" max="120" value="${intervals[s.id]||''}"
-             placeholder="分鐘" data-stop="${s.id}"
-             oninput="previewIntervalTime(this)"
-             style="width:65px;padding:5px 6px;border:1.5px solid var(--bd);border-radius:6px;font-size:.88rem;text-align:center;">
-           <span style="font-size:.72rem;color:var(--gray);">分</span>
-           <span class="interval-preview" id="ipv-${s.id}" style="font-size:.8rem;color:var(--orange);min-width:40px;"></span>`
-      }
-    </div>`).join('');
-}
-
-function previewIntervalTime(input){
-  // 顯示預覽時間（以 08:00 為例）
-  const baseMin = 8*60;
-  let cum = baseMin;
-  const activeStops = ALL_STOPS.filter(s=>s.active);
-  activeStops.forEach((s,i)=>{
-    if(i===0){ const el=document.getElementById(`ipv-${s.id}`); if(el) el.textContent=''; return; }
-    const inp = document.querySelector(`#rm-intervals-grid input[data-stop="${s.id}"]`);
-    const gap = parseInt(inp?.value)||0;
-    if(gap>0) cum+=gap;
-    const el = document.getElementById(`ipv-${s.id}`);
-    if(el) el.textContent = gap>0 ? `→ ${fromMin(cum)}` : '';
-  });
-}
-
-function getIntervalsFromGrid(){
-  const result = {};
-  document.querySelectorAll('#rm-intervals-grid input[data-stop]').forEach(inp=>{
-    const val = parseInt(inp.value);
-    if(val>0) result[inp.dataset.stop] = val;
-  });
-  return result;
-}
-
 // 還原成路線目前已儲存的停靠站順序＋間隔，捨棄本次 Modal 中尚未儲存的調整
 function applyDefaultIntervals(){
   const route = SCHOOL_ROUTES.find(r=>r.id===currentRouteId);
@@ -1911,120 +1865,6 @@ function openTripModal(routeId){
   openModal('trip-modal');
 }
 
-function buildStopsGrid(){
-  const grid=document.getElementById('tm-stops-grid');
-  if(!grid) return;
-  grid.innerHTML=ALL_STOPS.filter(s=>s.active).map((s,i)=>`
-    <div class="stop-time-grid" data-stop="${s.id}">
-      <div class="stop-name">${esc(s.name_zh)}</div>
-      <div style="display:flex;align-items:center;gap:.3rem;">
-        ${i===0
-          ? '<span style="font-size:.78rem;color:var(--gray);">發車時間</span>'
-          : `<span style="font-size:.78rem;color:var(--gray);">+</span>
-             <input type="number" min="0" max="120" value="" placeholder="分" title="${esc(s.name_zh)} 間隔分鐘" oninput="calcTimes()"
-               style="width:60px;padding:5px;border:1.5px solid var(--bd);border-radius:6px;font-size:.88rem;text-align:center;">
-             <span style="font-size:.78rem;color:var(--gray);">分</span>`
-        }
-      </div>
-      <div class="calc-time" id="ct-${s.id}">—</div>
-    </div>`).join('');
-  calcTimes();
-}
-
-function calcTimes(){
-  const depart=document.getElementById('tm-depart').value;
-  if(!depart){ ALL_STOPS.filter(s=>s.active).forEach(s=>{ const el=document.getElementById(`ct-${s.id}`); if(el) el.textContent='—'; }); return; }
-  let cumMin=toMin(depart);
-  ALL_STOPS.filter(s=>s.active).forEach((s,i)=>{
-    const el=document.getElementById(`ct-${s.id}`);
-    if(!el) return;
-    if(i===0){ el.textContent=depart; return; }
-    const grid=document.querySelector(`.stop-time-grid[data-stop="${s.id}"]`);
-    const input=grid?.querySelector('input[type=number]');
-    const gap=parseInt(input?.value)||0;
-    if(gap>0) cumMin+=gap;
-    el.textContent=gap>0?fromMin(cumMin):'—';
-  });
-  // 若有任何站點間隔與路線預設不同，顯示「已手動調整」標記
-  const route = SCHOOL_ROUTES.find(r=>r.id===currentRouteId);
-  const defaults = route?.stop_intervals||{};
-  const hasDefaults = Object.keys(defaults).length>0;
-  if(hasDefaults){
-    const activeStops = ALL_STOPS.filter(s=>s.active);
-    const isCustom = activeStops.some((s,i)=>{
-      if(i===0) return false;
-      const grid=document.querySelector(`.stop-time-grid[data-stop="${s.id}"]`);
-      const input=grid?.querySelector('input[type=number]');
-      const val=parseInt(input?.value)||0;
-      return val>0 && val !== (defaults[s.id]||0);
-    });
-    const ind=document.getElementById('custom-indicator');
-    if(ind) ind.style.display=isCustom?'':'none';
-  }
-}
-
-function toggleDay(el){ el.classList.toggle('on'); }
-
-async function saveTrip(){
-  const routeId=document.getElementById('tm-route-id').value;
-  const depart=document.getElementById('tm-depart').value;
-  const errEl=document.getElementById('tm-err');
-  errEl.textContent='';
-
-  if(!depart){ errEl.textContent='請填寫發車時間'; return; }
-  const days=[...document.querySelectorAll('#tm-days .day-chip.on')].map(c=>c.dataset.d).join('');
-  if(!days){ errEl.textContent='請選擇至少一個行駛日'; return; }
-
-  // Collect stops with calculated times
-  const tripStops=[];
-  let cumMin=toMin(depart);
-  const activeStops=ALL_STOPS.filter(s=>s.active);
-  activeStops.forEach((s,i)=>{
-    if(i===0){
-      tripStops.push({stop_id:s.id,arrive_time:depart,seq:i+1});
-      return;
-    }
-    const grid=document.querySelector(`.stop-time-grid[data-stop="${s.id}"]`);
-    const input=grid?.querySelector('input[type=number]');
-    const gap=parseInt(input?.value)||0;
-    if(gap>0){
-      cumMin+=gap;
-      tripStops.push({stop_id:s.id,arrive_time:fromMin(cumMin),seq:i+1});
-    }
-  });
-
-  if(tripStops.length<2){ errEl.textContent='請至少填寫2個站點的間隔時間'; return; }
-
-  try {
-    // 記錄是否有手動調整間隔（與路線預設不同）
-    const route = SCHOOL_ROUTES.find(r=>r.id===routeId);
-    const defaults = route?.stop_intervals||{};
-    const customIntervals = {};
-    const activeStops = ALL_STOPS.filter(s=>s.active);
-    activeStops.forEach((s,i)=>{
-      if(i===0) return;
-      const grid=document.querySelector(`.stop-time-grid[data-stop="${s.id}"]`);
-      const input=grid?.querySelector('input[type=number]');
-      const val=parseInt(input?.value)||0;
-      if(val>0 && val !== (defaults[s.id]||0)) customIntervals[s.id]=val;
-    });
-    const hasCustom = Object.keys(customIntervals).length>0;
-
-    // Create trip
-    const tripData=await api('POST','/api/schedule-admin?resource=school_trips',{
-      route_id:routeId,days,sort_order:0,
-      custom_intervals: hasCustom ? customIntervals : null
-    });
-    const tripId=tripData.data?.id;
-    if(!tripId) throw new Error('建立班次失敗');
-    // Create trip stops
-    for(const ts of tripStops){
-      await api('POST','/api/schedule-admin?resource=trip_stops',{...ts,trip_id:tripId});
-    }
-    closeModal('trip-modal');
-    await loadSchoolRoutes();
-  } catch(e){ errEl.textContent=e.message; }
-}
 
 async function deleteTrip(tripId, label){
   if(!confirm(`確定刪除 ${label} 班次？此操作無法復原。`)) return;
