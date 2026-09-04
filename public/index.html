@@ -815,10 +815,15 @@ async function renderSR(){
   const sobj=ALL_STOPS.find(s=>s.id===sel);
   const slbl=zh?sobj.zh:sobj.en;
   if(!limited.length){
+    const todayType=CALENDAR_DATES[today()];
+    const holidayNote=todayType==='holiday'?(zh?'（今天是行事曆設定的假日，校車班次可能較少或暫停行駛）':'(Today is set as a holiday — shuttle service may be reduced or suspended)')
+      :todayType==='makeup'?(zh?'（今天是行事曆設定的收假日，行駛班次可能與平日不同）':'(Today is set as a make-up day — schedule may differ from regular weekdays)')
+      :'';
     area.innerHTML=`<div class="card empty" role="status">
       <div class="empty-icon">🚌</div>
       <p style="font-size:1rem;font-weight:600;margin-bottom:6px;">${zh?'今日無更多班次':'No more trips today'}</p>
       <p style="font-size:.85rem;">${zh?'請明日再查詢':'Please check again tomorrow'}</p>
+      ${holidayNote?`<p style="font-size:.8rem;color:var(--danger);margin-top:6px;">${holidayNote}</p>`:''}
     </div>`;return;
   }
   let html=`<p class="sec-lbl">${zh?'停靠':'STOPS AT'} ${slbl} — ${limited.length}${all.length>MAX?' / '+all.length:''} ${zh?'班':'TRIP(S)'}</p>`;
@@ -914,7 +919,9 @@ async function doSearch(){
     if(toMin(trip.stops[fi].t)<n)return;
     schoolRes.push({kind:'school',r,trip,fi,ti});
   }));
-  const rawBusSearch = await getBusTripsForRoute(from,to,d,n);
+  // 公車只有「即時動態」資料，沒有固定時刻表——查未來日期時，即時公車資料跟那天完全無關，
+  // 所以只有查詢日期是「今天」才去查公車即時資料，未來日期只顯示校車的固定班表。
+  const rawBusSearch = isToday ? await getBusTripsForRoute(from,to,d,n) : [];
   const busSearchError = rawBusSearch.some(x=>x.isError);
   const busRes = rawBusSearch.filter(x=>!x.isError).map(x=>({kind:'bus',...x}));
   const all=[...schoolRes,...busRes].sort((a,b)=>{
@@ -924,13 +931,19 @@ async function doSearch(){
   });
   const limited=all.slice(0,MAX);
   if(!limited.length){
+    const qType=CALENDAR_DATES[dateStr];
+    const holidayNote=qType==='holiday'?(zh?'（查詢日期是行事曆設定的假日，校車班次可能較少或暫停行駛）':'(Selected date is set as a holiday — shuttle service may be reduced or suspended)')
+      :qType==='makeup'?(zh?'（查詢日期是行事曆設定的收假日，行駛班次可能與平日不同）':'(Selected date is set as a make-up day — schedule may differ from regular weekdays)')
+      :'';
     area.innerHTML=`<div class="card empty" role="status">
       <div class="empty-icon">🚌</div>
       <p style="font-size:1rem;font-weight:600;margin-bottom:6px;">${zh?'無符合班次':'No trips found'}</p>
       <p style="font-size:.85rem;">${zh?'請嘗試不同時間或站點':'Try different time or stops'}</p>
+      ${holidayNote?`<p style="font-size:.8rem;color:var(--danger);margin-top:6px;">${holidayNote}</p>`:''}
     </div>`;return;
   }
   let html=`<p class="sec-lbl">${limited.length}${all.length>MAX?' / '+all.length:''} ${zh?'班次':'TRIP(S) FOUND'}</p>`;
+  if(!isToday)html+=`<p class="limit-note">${zh?'市區公車僅提供當日即時動態，查詢未來日期僅顯示校車固定班表':'City bus real-time info is only available for today — future-date results show school shuttle schedule only'}</p>`;
   html+=limited.map(item=>item.kind==='school'?buildSchoolCard(item.r,item.trip,item.fi,item.ti,null,isToday):buildBusCard(item,null,item.fi,item.ti,isToday)).join('');
   if(all.length>MAX)html+=`<p class="limit-note">${zh?`僅顯示最近 ${MAX} 班`:`Showing next ${MAX} trips only`}</p>`;
   if(busSearchError) html+=`<p class="limit-note" style="color:#ba7517;">⚠️ ${zh?'部分公車即時資訊暫時無法取得':'Some bus real-time data temporarily unavailable'}</p>`;

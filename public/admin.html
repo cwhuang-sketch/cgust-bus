@@ -1026,6 +1026,20 @@ async function saveStop(){
 
 async function toggleStop(id, active){
   try {
+    if(!active){
+      // 停用前先檢查是否還在使用中。不像刪除整個擋掉，因為停用是可逆的（例如臨時封閉維修），
+      // 但要提醒管理者：停用後前台抓不到站名，班次列表裡這一站可能會顯示成代號而不是站名。
+      const [tripStopsRes, busDirsRes] = await Promise.all([
+        api('GET','/api/schedule-admin?resource=trip_stops'),
+        api('GET','/api/schedule-admin?resource=bus_directions')
+      ]);
+      const usedInTrips = (tripStopsRes.data||[]).some(ts=>ts.stop_id===id);
+      const usedInBusDirs = (busDirsRes.data||[]).some(bd=>bd.stop_id===id);
+      if(usedInTrips || usedInBusDirs){
+        const ok=confirm('此站點仍被班次時刻表或公車路線設定使用中。\n\n停用後，前台會找不到這個站點的名稱（可能顯示成站點代號），建議同時去「校車班表」或「公車路線」調整相關設定。\n\n仍要停用嗎？');
+        if(!ok) return;
+      }
+    }
     await api('PUT',`/api/schedule-admin?resource=stops&id=${id}`,{active});
     await loadStops();
   } catch(e){ alert(e.message); }
