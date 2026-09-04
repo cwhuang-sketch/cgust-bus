@@ -200,7 +200,6 @@ tr:hover td{background:#fafafa;}
         <div class="sidebar-group-label">班表管理</div>
         <button class="nav-btn active" onclick="switchPanel('school')" id="nav-school"><span class="icon">🚌</span>校內班車</button>
         <button class="nav-btn" onclick="switchPanel('bus')" id="nav-bus"><span class="icon">🚍</span>公車路線</button>
-        <button class="nav-btn" onclick="switchPanel('csv')" id="nav-csv"><span class="icon">📊</span>CSV 匯入匯出</button>
       </div>
       <div class="sidebar-group">
         <div class="sidebar-group-label admin-only" style="display:none;">系統設定</div>
@@ -252,28 +251,6 @@ tr:hover td{background:#fafafa;}
               <tbody id="bus-tbody"></tbody>
             </table>
           </div>
-        </div>
-      </div>
-
-      <!-- ── CSV ── -->
-      <div class="panel" id="panel-csv">
-        <div class="card">
-          <div class="card-header"><span class="card-title">CSV 匯入／匯出</span></div>
-          <div class="alert alert-ok">✅ 班表資料已儲存於 Supabase 資料庫，CSV 匯出為最新資料。</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-            <div style="border:1.5px dashed var(--bd);border-radius:var(--rs);padding:1.25rem;text-align:center;">
-              <p style="font-weight:600;margin-bottom:.4rem;">📤 匯出班表</p>
-              <p style="font-size:.78rem;color:var(--gray);margin-bottom:.9rem;">匯出所有班次為 CSV，可用 Excel 編輯</p>
-              <button class="btn btn-success" onclick="exportCSV()">下載 CSV 班表</button>
-            </div>
-            <div style="border:1.5px dashed var(--bd);border-radius:var(--rs);padding:1.25rem;text-align:center;">
-              <p style="font-weight:600;margin-bottom:.4rem;">📥 匯入班表</p>
-              <p style="font-size:.78rem;color:var(--gray);margin-bottom:.9rem;">選擇 CSV 檔案預覽後匯入</p>
-              <button class="btn btn-primary" onclick="document.getElementById('csvfile').click()">選擇 CSV 檔案</button>
-              <input type="file" id="csvfile" style="display:none;" accept=".csv" onchange="previewCSV(this)">
-            </div>
-          </div>
-          <div id="csv-preview" style="display:none;margin-top:1rem;"></div>
         </div>
       </div>
 
@@ -2465,14 +2442,22 @@ async function saveAccount(){
 }
 
 async function toggleAcc(id,active){
-  try { await fetch(`/api/auth-accounts?id=${id}`,{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},body:JSON.stringify({active})}); await loadAccounts(); }
-  catch(e){alert(e.message);}
+  try {
+    const r = await fetch(`/api/auth-accounts?id=${id}`,{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},body:JSON.stringify({active})});
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok){ alert('操作失敗：'+(data.error||`HTTP ${r.status}`)); return; }
+    await loadAccounts();
+  } catch(e){ alert('連線錯誤：'+e.message); }
 }
 
 async function deleteAcc(id,username){
   if(!confirm(`確定刪除帳號「${username}」？`)) return;
-  try { await fetch(`/api/auth-accounts?id=${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${SESSION_TOKEN}`}}); await loadAccounts(); }
-  catch(e){alert(e.message);}
+  try {
+    const r = await fetch(`/api/auth-accounts?id=${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${SESSION_TOKEN}`}});
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok){ alert('刪除失敗：'+(data.error||`HTTP ${r.status}`)); return; }
+    await loadAccounts();
+  } catch(e){ alert('連線錯誤：'+e.message); }
 }
 
 // ── 公告與備註設定（僅 admin）────────────────────────────────────
@@ -2605,10 +2590,12 @@ async function confirmResetPw(){
   if(nw.length<8){errEl.textContent='密碼至少需要 8 個字元';return;}
   if(nw!==cfm){errEl.textContent='兩次密碼輸入不一致';return;}
   try {
-    await fetch(`/api/auth-accounts?id=${resetTargetId}`,{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},body:JSON.stringify({password:nw})});
+    const r = await fetch(`/api/auth-accounts?id=${resetTargetId}`,{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},body:JSON.stringify({password:nw})});
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok){ errEl.textContent='重設失敗：'+(data.error||`HTTP ${r.status}`); return; }
     closeModal('acc-modal');
     alert('密碼已重設完成');
-  } catch(e){errEl.textContent='重設失敗';}
+  } catch(e){errEl.textContent='連線錯誤：'+e.message;}
 }
 
 // ── Change Password ───────────────────────────────────────────
@@ -2629,77 +2616,14 @@ async function changePw(){
     const accData=await accRes.json();
     const myAcc=accData.accounts?.find(a=>a.username===(SESSION_USER.username||SESSION_USER.user));
     if(!myAcc){msg.textContent='找不到帳號';msg.className='pw-msg err';return;}
-    await fetch(`/api/auth-accounts?id=${myAcc.id}`,{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},body:JSON.stringify({password:nw})});
+    const pwRes = await fetch(`/api/auth-accounts?id=${myAcc.id}`,{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':`Bearer ${SESSION_TOKEN}`},body:JSON.stringify({password:nw})});
+    const pwData = await pwRes.json().catch(()=>({}));
+    if(!pwRes.ok){ msg.textContent='變更失敗：'+(pwData.error||`HTTP ${pwRes.status}`); msg.className='pw-msg err'; return; }
     ['pw-cur','pw-new','pw-cfm'].forEach(id=>document.getElementById(id).value='');
     msg.textContent='密碼已成功變更';msg.className='pw-msg ok';
   } catch(e){msg.textContent='連線錯誤';msg.className='pw-msg err';}
 }
 
-// ── CSV ───────────────────────────────────────────────────────
-function exportCSV(){
-  const rows=[['route_zh','route_en','type','days','stops','url']];
-  SCHOOL_ROUTES.forEach(r=>{
-    r.trips.forEach(trip=>{
-      const days=trip.days||'';
-      // trip.stops 格式：{stop_id, arrive_time} 來自 Supabase
-      const stops=trip.stops.map(s=>`${s.stop_id||s.id}:${s.arrive_time||s.t}`).join(' ');
-      rows.push([r.name_zh,r.name_en,'school',days,stops,r.route_url||'']);
-    });
-  });
-  BUS_ROUTES_DB.forEach(r=>{
-    rows.push([`公車${r.route_no}`,'Bus '+r.route_no,'bus','1234567','',r.route_url||'']);
-  });
-  const csv='\uFEFF'+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
-  try {
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob);
-    const now=new Date();
-    const d=`${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-    const a=document.createElement('a');a.href=url;a.download=`CGUST_班表_${d}.csv`;a.style.display='none';
-    document.body.appendChild(a);a.click();
-    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},200);
-  } catch(e){alert('匯出失敗：'+e.message);}
-}
-
-function previewCSV(input){
-  const file=input.files[0];
-  if(!file) return;
-  const reader=new FileReader();
-  reader.onload=function(e){
-    const area=document.getElementById('csv-preview');
-    area.style.display='';
-    try {
-      const text=e.target.result.replace('\uFEFF','');
-      const lines=text.split('\n').map(function(l){return l.replace('\r','');}).filter(function(l){return l.trim();});
-      const headers=lines[0].split(',').map(function(h){return h.replace(/"/g,'').trim();});
-      const rows=lines.slice(1).map(function(l){
-        const fields=[];
-        let cur='',inQ=false;
-        for(let ci=0;ci<l.length;ci++){
-          const ch=l[ci];
-          if(ch==='"') inQ=!inQ;
-          else if(ch===','&&!inQ){fields.push(cur);cur='';}
-          else cur+=ch;
-        }
-        fields.push(cur);
-        return fields.map(function(f){return f.replace(/"/g,'');});
-      }).filter(function(r){return r.length>1&&r[0];});
-      area.innerHTML='<div class="alert alert-ok">\u2705 \u89e3\u6790\u6210\u529f\uff0c\u5171 '+rows.length+' \u7b46\u672c\u6b21\u3002</div>'
-        +'<div class="table-wrap" style="max-height:200px;overflow-y:auto;">'
-        +'<table><thead><tr>'+headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead>'
-        +'<tbody>'+rows.map(function(r){return '<tr>'+r.map(function(c){return '<td style="font-size:.78rem;">'+c+'</td>';}).join('')+'</tr>';}).join('')+'</tbody>'
-        +'</table></div>'
-        +'<div style="margin-top:.75rem;">'
-        +'<button class="btn btn-danger" onclick="alert(\'\u5339\u5165\u529f\u80fd\u958b\u767c\u4e2d\uff0c\u76ee\u524d\u8acb\u4f7f\u7528\u5f8c\u53f0\u76f4\u63a5\u7ba1\u7406\u672c\u6b21\u3002\')">\u5339\u5165\uff08\u958b\u767c\u4e2d\uff09</button>'
-        +'<button class="btn btn-outline" onclick="document.getElementById(\'csv-preview\').style.display=\'none\'" style="margin-left:.5rem;">\u53d6\u6d88</button>'
-        +'</div>';
-    } catch(ex){
-      area.innerHTML='<div class="alert alert-err">\u274c CSV \u89e3\u6790\u5931\u6557\uff1a'+ex.message+'</div>';
-    }
-  };
-  reader.readAsText(file,'UTF-8');
-  input.value='';
-}
 
 // ── TDX Status ────────────────────────────────────────────────
 async function checkTDXStatus(){
