@@ -571,15 +571,16 @@ tr:hover td{background:#fafafa;}
 
 <!-- 批次修改班次 Modal -->
 <div class="modal-overlay" id="batch-edit-modal" role="dialog" aria-modal="true">
-  <div class="modal" style="width:520px;">
+  <div class="modal" style="width:560px;">
     <h3>批次修改班次</h3>
-    <p class="hint" style="margin-bottom:.75rem;">將對已選取的 <strong id="be-count">0</strong> 個班次套用以下修改，勾選才會套用，不勾就維持原樣。</p>
+    <p class="hint" style="margin-bottom:1.25rem;">將對已選取的 <strong id="be-count">0</strong> 個班次套用以下修改，勾選才會套用，不勾就維持原樣。</p>
 
-    <div class="fg">
-      <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
-        <input type="checkbox" id="be-days-toggle" onchange="toggleBeSection('days')"> 修改行駛日（覆蓋成以下勾選的日子）
+    <div class="fg" style="margin-bottom:1.5rem;">
+      <label style="display:flex;align-items:flex-start;gap:.65rem;cursor:pointer;">
+        <input type="checkbox" id="be-days-toggle" onchange="toggleBeSection('days')" style="width:18px;height:18px;flex:none;margin-top:2px;">
+        <span style="font-size:.88rem;color:var(--ink);font-weight:500;">修改行駛日（覆蓋成以下勾選的日子）</span>
       </label>
-      <div class="days-wrap" id="be-days" style="margin-top:.5rem;opacity:.4;pointer-events:none;">
+      <div class="days-wrap" id="be-days" style="margin-top:.75rem;padding-left:1.75rem;opacity:.4;pointer-events:none;">
         <span class="day-chip" data-d="1" onclick="toggleDay(this)">一</span>
         <span class="day-chip" data-d="2" onclick="toggleDay(this)">二</span>
         <span class="day-chip" data-d="3" onclick="toggleDay(this)">三</span>
@@ -592,11 +593,12 @@ tr:hover td{background:#fafafa;}
       </div>
     </div>
 
-    <div class="fg">
-      <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
-        <input type="checkbox" id="be-shift-toggle" onchange="toggleBeSection('shift')"> 整批平移各站時間（分鐘，可負數表示提早）
+    <div class="fg" style="margin-bottom:1rem;">
+      <label style="display:flex;align-items:flex-start;gap:.65rem;cursor:pointer;">
+        <input type="checkbox" id="be-shift-toggle" onchange="toggleBeSection('shift')" style="width:18px;height:18px;flex:none;margin-top:2px;">
+        <span style="font-size:.88rem;color:var(--ink);font-weight:500;">整批平移各站時間（分鐘，可負數表示提早）</span>
       </label>
-      <div id="be-shift-wrap" style="margin-top:.5rem;opacity:.4;pointer-events:none;">
+      <div id="be-shift-wrap" style="margin-top:.75rem;padding-left:1.75rem;opacity:.4;pointer-events:none;">
         <input type="number" id="be-shift-minutes" placeholder="例：5（全部延後5分鐘）或 -5（全部提早5分鐘）"
           style="width:100%;padding:8px 10px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.9rem;">
       </div>
