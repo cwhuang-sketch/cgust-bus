@@ -52,7 +52,7 @@ async function dbPost(url, key, table, body) {
 }
 
 async function dbPut(url, key, table, id, body) {
-  const r = await fetch(`${url}/rest/v1/${table}?id=eq.${id}`, {
+  const r = await fetch(`${url}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, updated_at: new Date().toISOString() })
@@ -62,7 +62,7 @@ async function dbPut(url, key, table, id, body) {
 }
 
 async function dbDel(url, key, table, id) {
-  const r = await fetch(`${url}/rest/v1/${table}?id=eq.${id}`, {
+  const r = await fetch(`${url}/rest/v1/${table}?id=eq.${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
   });
@@ -83,21 +83,26 @@ export default async function handler(req, res) {
   if (!user) return res.status(401).json({ error: 'Authentication required' });
 
   const { resource, id } = req.query;
-  // resource: stops | school_routes | school_trips | trip_stops | bus_routes | bus_directions | site_settings | calendar_dates
+  // resource: stops | school_routes | school_trips | trip_stops | bus_routes | bus_directions | site_settings | calendar_dates | tdx_quota_events
 
-  const ALLOWED_RESOURCES = ['stops','school_routes','school_trips','trip_stops','bus_routes','bus_directions','site_settings','calendar_dates'];
+  const ALLOWED_RESOURCES = ['stops','school_routes','school_trips','trip_stops','bus_routes','bus_directions','site_settings','calendar_dates','tdx_quota_events'];
   if (!resource || !ALLOWED_RESOURCES.includes(resource)) {
     return res.status(400).json({ error: 'Invalid resource. Use: ' + ALLOWED_RESOURCES.join(', ') });
   }
 
-  // 編輯者只能操作班次，不能操作站點設定、公告／備註設定、假日行事曆（僅 admin 可編輯）
-  if (user.role === 'editor' && ['stops','site_settings','calendar_dates'].includes(resource)) {
+  // 編輯者只能操作班次，不能操作站點設定、公告／備註設定、假日行事曆、TDX 額度記錄（僅 admin 可看）
+  if (user.role === 'editor' && ['stops','site_settings','calendar_dates','tdx_quota_events'].includes(resource)) {
     return res.status(403).json({ error: '編輯者無權限操作此設定' });
   }
 
   // site_settings 是單一列設定（id 固定為 1），只支援讀取與更新
   if (resource === 'site_settings' && (req.method === 'POST' || req.method === 'DELETE')) {
     return res.status(405).json({ error: 'site_settings 僅支援 GET / PUT' });
+  }
+
+  // tdx_quota_events 是系統自動寫入的記錄，後台只能查看跟刪除，不能手動新增/修改
+  if (resource === 'tdx_quota_events' && (req.method === 'POST' || req.method === 'PUT')) {
+    return res.status(405).json({ error: 'tdx_quota_events 僅支援 GET / DELETE' });
   }
 
   try {
@@ -110,19 +115,20 @@ export default async function handler(req, res) {
         bus_directions: 'direction.asc,seq.asc',
         site_settings: 'id.asc',
         calendar_dates: 'id.asc',
+        tdx_quota_events: 'created_at.desc',
       };
       let query = `?order=${DEFAULT_ORDER[resource] || 'sort_order.asc,created_at.asc'}`;
-      if (id) query = `?id=eq.${id}`;
+      if (id) query = `?id=eq.${encodeURIComponent(id)}`;
 
       // 特殊查詢：取得特定 route 的所有 trips
       if (resource === 'school_trips' && req.query.route_id) {
-        query = `?route_id=eq.${req.query.route_id}&order=sort_order.asc`;
+        query = `?route_id=eq.${encodeURIComponent(req.query.route_id)}&order=sort_order.asc`;
       }
       if (resource === 'trip_stops' && req.query.trip_id) {
-        query = `?trip_id=eq.${req.query.trip_id}&order=seq.asc`;
+        query = `?trip_id=eq.${encodeURIComponent(req.query.trip_id)}&order=seq.asc`;
       }
       if (resource === 'bus_directions' && req.query.route_id) {
-        query = `?route_id=eq.${req.query.route_id}&order=direction.asc,seq.asc`;
+        query = `?route_id=eq.${encodeURIComponent(req.query.route_id)}&order=direction.asc,seq.asc`;
       }
       // site_settings 是單一列設定，固定讀取 id=1（沒有 sort_order/created_at 欄位）
       if (resource === 'site_settings') {
@@ -161,9 +167,14 @@ export default async function handler(req, res) {
         }
       }
 
-      // 驗證時間格式
-      if (resource === 'trip_stops' && !/^\d{2}:\d{2}$/.test(body.arrive_time)) {
-        return res.status(400).json({ error: '時刻格式錯誤，應為 HH:MM' });
+      // 驗證時間格式（同時檢查數值範圍：小時 00-23、分鐘 00-59，避免「25:00」這種格式對但數值不合法的資料寫入）
+      if (resource === 'trip_stops' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.arrive_time)) {
+        return res.status(400).json({ error: '時刻格式錯誤，應為 HH:MM（00:00~23:59）' });
+      }
+
+      // 驗證行駛日格式（1-7=星期一~日，8=假日，9=收假日；只能是這些數字組成）
+      if (resource === 'school_trips' && !/^[1-9]+$/.test(body.days)) {
+        return res.status(400).json({ error: 'days 格式錯誤，應為 1-9 的數字組合（1-7=星期、8=假日、9=收假日）' });
       }
 
       // 驗證假日行事曆日期格式與類型
@@ -193,6 +204,17 @@ export default async function handler(req, res) {
         if (!VALID_CITIES.includes(body.tdx_city)) {
           return res.status(400).json({ error: `tdx_city 必須是: ${VALID_CITIES.join(', ')}` });
         }
+      }
+
+      // 更新時如果有帶這些欄位，同樣要驗證格式（新增時已經驗證過，更新不能漏掉，否則後台改壞資料一樣會壞掉前台）
+      if (resource === 'trip_stops' && body.arrive_time !== undefined && !/^([01]\d|2[0-3]):[0-5]\d$/.test(body.arrive_time)) {
+        return res.status(400).json({ error: '時刻格式錯誤，應為 HH:MM（00:00~23:59）' });
+      }
+      if (resource === 'school_trips' && body.days !== undefined && !/^[1-9]+$/.test(body.days)) {
+        return res.status(400).json({ error: 'days 格式錯誤，應為 1-9 的數字組合（1-7=星期、8=假日、9=收假日）' });
+      }
+      if (resource === 'calendar_dates' && body.type !== undefined && !['holiday','makeup'].includes(body.type)) {
+        return res.status(400).json({ error: 'type 必須是 holiday 或 makeup' });
       }
 
       await dbPut(url, key, resource, targetId, body);

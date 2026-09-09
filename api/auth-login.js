@@ -50,7 +50,11 @@ async function verifyPassword(password, hash) {
     const derived = crypto.pbkdf2Sync(
       password, salt, parseInt(iterations), 64, 'sha512'
     ).toString('hex');
-    return derived === storedHash;
+    // 用常數時間比較，避免透過比對耗時的微小差異推測正確雜湊值（timing attack 防護）
+    const a = Buffer.from(derived, 'hex');
+    const b = Buffer.from(storedHash, 'hex');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
   }
   // 初始帳號用的 bcrypt hash 直接比對（簡化處理）
   // 正式環境建議改用 bcrypt library

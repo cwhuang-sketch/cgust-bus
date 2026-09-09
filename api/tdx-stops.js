@@ -34,30 +34,71 @@ async function verifySession(req, url, key) {
   return s.accounts;
 }
 
-// ── TDX Token 快取（跟 tdx-bus.js 各自獨立快取，簡單起見不共用）──
-let cachedToken = null;
-let tokenExpiry = 0;
+// ── 雙 TDX 帳號設定：第一組（primary）額滿時自動切到第二組（secondary）──
+const TDX_ACCOUNTS = [
+  { label: 'primary',   id: process.env.TDX_CLIENT_ID,   secret: process.env.TDX_CLIENT_SECRET },
+  { label: 'secondary', id: process.env.TDX_CLIENT_ID_2, secret: process.env.TDX_CLIENT_SECRET_2 },
+].filter(a => a.id && a.secret);
 
-async function getTDXToken() {
-  if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
-  const clientId = process.env.TDX_CLIENT_ID;
-  const clientSecret = process.env.TDX_CLIENT_SECRET;
-  if (!clientId || !clientSecret) throw new Error('TDX not configured');
+const tokenCache = {};
+
+async function getTDXToken(account) {
+  const cached = tokenCache[account.label];
+  if (cached && Date.now() < cached.expiry) return cached.token;
 
   const res = await fetch(
     'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`
+      body: `grant_type=client_credentials&client_id=${encodeURIComponent(account.id)}&client_secret=${encodeURIComponent(account.secret)}`
     }
   );
+  if (res.status === 429) {
+    const err = new Error('TDX auth quota exceeded');
+    err.quotaExceeded = true;
+    throw err;
+  }
   if (!res.ok) throw new Error('TDX auth failed: ' + res.status);
   const data = await res.json();
   if (!data.access_token) throw new Error('No token in TDX response');
-  cachedToken = data.access_token;
-  tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-  return cachedToken;
+  tokenCache[account.label] = { token: data.access_token, expiry: Date.now() + (data.expires_in - 60) * 1000 };
+  return data.access_token;
+}
+
+async function logQuotaEvent(account, endpoint) {
+  try {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_KEY;
+    if (!url || !key) return;
+    await fetch(`${url}/rest/v1/tdx_quota_events`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ account, endpoint })
+    });
+  } catch (e) {
+    console.error('[logQuotaEvent] 記錄額度事件失敗（不影響主要功能）:', e.message);
+  }
+}
+
+async function fetchStopsWith(account, city, escapedKeyword) {
+  const token = await getTDXToken(account);
+  const tdxUrl = `https://tdx.transportdata.tw/api/basic/v2/Bus/Stop/City/${city}` +
+    `?$filter=contains(StopName/Zh_tw,'${encodeURIComponent(escapedKeyword)}')` +
+    `&$select=StopName&$top=20&$format=JSON`;
+
+  const dataRes = await fetch(tdxUrl, {
+    headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'gzip' }
+  });
+  if (dataRes.status === 429) {
+    const err = new Error(`TDX quota exceeded (${account.label})`);
+    err.quotaExceeded = true;
+    throw err;
+  }
+  if (!dataRes.ok) {
+    throw new Error('TDX data fetch failed: ' + dataRes.status);
+  }
+  return dataRes.json();
 }
 
 const ALLOWED_CITIES = new Set(['Taoyuan', 'NewTaipei', 'Taipei', 'Keelung']);
@@ -91,30 +132,35 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid keyword format' });
   }
 
-  try {
-    const token = await getTDXToken();
-    // OData 單引號需要用兩個單引號跳脫
-    const escapedKeyword = keyword.replace(/'/g, "''");
-    const tdxUrl = `https://tdx.transportdata.tw/api/basic/v2/Bus/Stop/City/${city}` +
-      `?$filter=contains(StopName/Zh_tw,'${encodeURIComponent(escapedKeyword)}')` +
-      `&$select=StopName&$top=20&$format=JSON`;
-
-    const dataRes = await fetch(tdxUrl, {
-      headers: { Authorization: `Bearer ${token}`, 'Accept-Encoding': 'gzip' }
-    });
-    if (!dataRes.ok) {
-      console.error('[tdx-stops] Data fetch error:', dataRes.status);
-      return res.status(502).json({ error: 'TDX data fetch failed' });
-    }
-
-    const data = await dataRes.json();
-    // 同一個站牌可能因為多路線經過而重複出現，這裡去掉重複的站名
-    const names = [...new Set((data || []).map(s => s.StopName?.Zh_tw).filter(Boolean))];
-
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
-    return res.status(200).json({ data: names.map(name => ({ name })) });
-  } catch (err) {
-    console.error('[tdx-stops] Error:', err.message);
-    return res.status(500).json({ error: 'Internal server error' });
+  if (!TDX_ACCOUNTS.length) {
+    return res.status(503).json({ error: 'TDX not configured' });
   }
+
+  // OData 單引號需要用兩個單引號跳脫
+  const escapedKeyword = keyword.replace(/'/g, "''");
+
+  let lastNonQuotaError = null;
+  for (const account of TDX_ACCOUNTS) {
+    try {
+      const data = await fetchStopsWith(account, city, escapedKeyword);
+      // 同一個站牌可能因為多路線經過而重複出現，這裡去掉重複的站名
+      const names = [...new Set((data || []).map(s => s.StopName?.Zh_tw).filter(Boolean))];
+      res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
+      return res.status(200).json({ data: names.map(name => ({ name })) });
+    } catch (err) {
+      if (err.quotaExceeded) {
+        console.error(`[tdx-stops] TDX 額度已達上限 (${account.label})`);
+        await logQuotaEvent(account.label, 'tdx-stops');
+        continue;
+      }
+      console.error(`[tdx-stops] 帳號 ${account.label} 查詢失敗:`, err.message);
+      lastNonQuotaError = err;
+      continue;
+    }
+  }
+
+  if (lastNonQuotaError) {
+    return res.status(502).json({ error: 'TDX data fetch failed' });
+  }
+  return res.status(429).json({ error: 'quota_exceeded', message: 'TDX 查詢量已達上限，請稍後再試' });
 }

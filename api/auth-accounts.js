@@ -164,7 +164,7 @@ export default async function handler(req, res) {
       }
 
       const r = await fetch(
-        `${supabaseUrl}/rest/v1/accounts?id=eq.${id}`,
+        `${supabaseUrl}/rest/v1/accounts?id=eq.${encodeURIComponent(id)}`,
         {
           method: 'PATCH',
           headers: {
@@ -191,7 +191,7 @@ export default async function handler(req, res) {
 
       // 先刪除相關 sessions
       await fetch(
-        `${supabaseUrl}/rest/v1/sessions?account_id=eq.${id}`,
+        `${supabaseUrl}/rest/v1/sessions?account_id=eq.${encodeURIComponent(id)}`,
         {
           method: 'DELETE',
           headers: {
@@ -202,7 +202,7 @@ export default async function handler(req, res) {
       );
 
       const r = await fetch(
-        `${supabaseUrl}/rest/v1/accounts?id=eq.${id}`,
+        `${supabaseUrl}/rest/v1/accounts?id=eq.${encodeURIComponent(id)}`,
         {
           method: 'DELETE',
           headers: {

@@ -31,8 +31,8 @@ export default async function handler(req, res) {
       fetch(`${url}/rest/v1/school_trips?order=sort_order.asc`, { headers }),
       fetch(`${url}/rest/v1/trip_stops?order=seq.asc`, { headers }),
       fetch(`${url}/rest/v1/bus_routes?active=eq.true&order=sort_order.asc`, { headers }),
-      fetch(`${url}/rest/v1/bus_directions?order=seq.asc`, { headers }),
-      fetch(`${url}/rest/v1/site_settings?id=eq.1&select=announcement,footer_note`, { headers }),
+      fetch(`${url}/rest/v1/bus_directions?order=route_id.asc,direction.asc,seq.asc`, { headers }),
+      fetch(`${url}/rest/v1/site_settings?id=eq.1&select=announcement,announcement_en,footer_note,footer_note_en`, { headers }),
       fetch(`${url}/rest/v1/calendar_dates?select=id,type&order=id.asc`, { headers }),
     ]);
 
@@ -49,13 +49,15 @@ export default async function handler(req, res) {
       responses.map(r => r.json())
     );
 
-    let settings = { announcement: '', footer_note: '' };
+    let settings = { announcement: '', announcement_en: '', footer_note: '', footer_note_en: '' };
     if (settingsRes.ok) {
       const settingsRows = await settingsRes.json();
       if (settingsRows?.[0]) {
         settings = {
           announcement: settingsRows[0].announcement || '',
-          footer_note: settingsRows[0].footer_note || ''
+          announcement_en: settingsRows[0].announcement_en || '',
+          footer_note: settingsRows[0].footer_note || '',
+          footer_note_en: settingsRows[0].footer_note_en || ''
         };
       }
     } else {
@@ -110,7 +112,7 @@ export default async function handler(req, res) {
     }));
 
     // 快取 30 秒
-    res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+    // Cache-Control 由 vercel.json 統一設定（避免這裡跟 vercel.json 兩處設定不一致）
 
     return res.status(200).json({
       stops,
