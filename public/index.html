@@ -450,7 +450,7 @@ footer{
       </div>
       <div class="time-row">
         <div><label class="field-label" id="ld" for="id2">日期</label><input type="date" id="id2" aria-required="true"></div>
-        <div><label class="field-label" id="ltm" for="itm">時間</label><input type="time" id="itm" aria-required="true"></div>
+        <div><label class="field-label" id="ltm" for="itm">時間</label><input type="time" id="itm" lang="en-GB" aria-required="true"></div>
       </div>
       <button class="search-btn" id="bs2" onclick="doSearch()">查詢班次 SEARCH</button>
     </div>
@@ -484,10 +484,21 @@ let SCHOOL_ROUTES = [];
 let BUS_ROUTES   = [];
 let DATA_LOADED  = false;
 let DATA_ERROR   = false;
+const FETCH_TIMEOUT=10*1000; // 逾時保護：避免請求卡住時畫面永遠停在「查詢中」
 
 async function loadSchedule(){
   try {
-    const res = await fetch('/api/schedule');
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),FETCH_TIMEOUT);
+    let res;
+    try {
+      res = await fetch('/api/schedule',{signal:controller.signal});
+    } catch(e){
+      if(e.name==='AbortError') throw new Error('請求逾時，請檢查網路連線後重試');
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
 
@@ -500,42 +511,54 @@ async function loadSchedule(){
     }));
     SIMPLE_STOPS = data.stops.filter(s=>s.simple).map(s=>s.id);
 
-    // 校內路線：轉換為前端格式
+    // 校內路線：轉換為前端格式（單一路線/班次資料有問題就跳過那筆，不要讓一筆壞資料拖垮整個班表）
     SCHOOL_ROUTES = data.school_routes
       .filter(r=>r.active)
-      .map(r=>({
-        id: r.id,
-        type: 'school',
-        zh: r.name_zh,
-        en: r.name_en,
-        url: r.route_url || '',
-        note: r.note || '',
-        trips: r.trips.map(t=>({
-          id: t.id,
-          days: [...t.days].map(Number),
-          stops: t.stops.map(s=>({ id: s.stop_id || s.id, t: s.arrive_time || s.t }))
-        }))
-      }));
+      .map(r=>{
+        try {
+          return {
+            id: r.id,
+            type: 'school',
+            zh: r.name_zh,
+            en: r.name_en,
+            url: r.route_url || '',
+            note: r.note || '',
+            trips: (r.trips||[]).map(t=>{
+              try {
+                return {
+                  id: t.id,
+                  days: [...(t.days||'')].map(Number),
+                  stops: (t.stops||[]).map(s=>({ id: s.stop_id || s.id, t: s.arrive_time || s.t }))
+                };
+              } catch(e){ console.error('[loadSchedule] 跳過異常的校內班次資料:', t?.id, e); return null; }
+            }).filter(Boolean)
+          };
+        } catch(e){ console.error('[loadSchedule] 跳過異常的校內路線資料:', r?.id, e); return null; }
+      }).filter(Boolean);
 
-    // 公車路線：轉換為前端格式
-    BUS_ROUTES = data.bus_routes.map(r=>({
-      routeNo:      r.route_no,
-      operator:     r.operator_zh,
-      operatorEn:   r.operator_en,
-      zh:           `${r.operator_zh} ${r.route_no}`,
-      en:           `${r.operator_en} ${r.route_no}`,
-      url:          r.route_url || '',
-      note:         r.note || '',
-      tdxCity:      r.tdx_city,
-      tdxRouteName: r.tdx_route_name,
-      directions: r.directions.map(d=>({
-        dir:   d.dir,
-        zh:    d.desc_zh,
-        en:    d.desc_en,
-        // stops 保留完整物件 {id, tdx_stop_name}，供 getStopMap 及路線比對使用
-        stops: d.stops.map(s=>({ id: s.id, tdx_stop_name: s.tdx_stop_name }))
-      }))
-    }));
+    // 公車路線：轉換為前端格式（同樣單筆失敗就跳過，不影響其他路線）
+    BUS_ROUTES = (data.bus_routes||[]).map(r=>{
+      try {
+        return {
+          routeNo:      r.route_no,
+          operator:     r.operator_zh,
+          operatorEn:   r.operator_en,
+          zh:           `${r.operator_zh} ${r.route_no}`,
+          en:           `${r.operator_en} ${r.route_no}`,
+          url:          r.route_url || '',
+          note:         r.note || '',
+          tdxCity:      r.tdx_city,
+          tdxRouteName: r.tdx_route_name,
+          directions: (r.directions||[]).map(d=>({
+            dir:   d.dir,
+            zh:    d.desc_zh,
+            en:    d.desc_en,
+            // stops 保留完整物件 {id, tdx_stop_name}，供 getStopMap 及路線比對使用
+            stops: (d.stops||[]).map(s=>({ id: s.id, tdx_stop_name: s.tdx_stop_name }))
+          }))
+        };
+      } catch(e){ console.error('[loadSchedule] 跳過異常的公車路線資料:', r?.route_no, e); return null; }
+    }).filter(Boolean);
 
     // 公告與備註（由後台設定，沒有內容就整區隱藏）
     renderSiteSettings(data.settings || {});
@@ -639,9 +662,22 @@ function cachedFetch(url){
   const now=Date.now();
   const cached=API_CACHE[url];
   if(cached && now-cached.ts<CACHE_TTL) return cached.promise;
-  const promise=fetch(url).then(res=>{
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),FETCH_TIMEOUT);
+  const promise=fetch(url,{signal:controller.signal}).then(async res=>{
+    clearTimeout(timer);
+    if(res.status===429){
+      const body=await res.json().catch(()=>({}));
+      const e=new Error(body.message||'查詢量過高');
+      e.quotaExceeded = body.error==='quota_exceeded';
+      throw e;
+    }
     if(!res.ok) throw new Error('HTTP '+res.status);
     return res.json();
+  }).catch(e=>{
+    clearTimeout(timer);
+    if(e.name==='AbortError') throw new Error('請求逾時，請稍後再試');
+    throw e;
   });
   API_CACHE[url]={ts:now,promise};
   promise.catch(()=>{ delete API_CACHE[url]; }); // 失敗就清掉快取，避免一直卡住錯誤結果
@@ -680,10 +716,10 @@ async function getBusTripsForStop(sid){
 
     // 同一站可能跨兩個縣市（例如候車亭有桃園和新北的公車）→ 平行查詢，不要一個一個等
     const cities = [...new Set(relevantRoutes.map(r=>r.tdxCity))];
-    let hadError=false;
+    let hadError=false, hadQuotaError=false;
     const jsonList = await Promise.all(cities.map(city=>
       cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`)
-        .catch(e=>{console.error('TDX proxy error:',e);hadError=true;return null;})
+        .catch(e=>{console.error('TDX proxy error:',e);if(e.quotaExceeded)hadQuotaError=true;else hadError=true;return null;})
     ));
     const allArrivals = [];
     jsonList.forEach(json=>{ if(json) allArrivals.push(...(json.data||[])); });
@@ -714,7 +750,8 @@ async function getBusTripsForStop(sid){
       });
     });
     const sorted = results.sort((a,b)=>a.estSeconds-b.estSeconds);
-    if(hadError) sorted.push({ isError:true, errorMsg:'部分公車即時資料查詢失敗' });
+    if(hadQuotaError) sorted.push({ isError:true, errorMsg:(L.cur==='zh'?'目前查詢量過高，請稍後再次查詢':'Too many requests right now — please try again shortly') });
+    else if(hadError) sorted.push({ isError:true, errorMsg:(L.cur==='zh'?'部分公車即時資料查詢失敗':'Some bus real-time data unavailable') });
     return sorted;
   } catch(e) {
     console.error('getBusTripsForStop error:', e);
@@ -743,10 +780,10 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
     if(!tasks.length) return [];
 
     // 平行呼叫；相同縣市＋站名的請求會透過 cachedFetch 自動共用同一個結果，不會重複打 API
-    let hadError=false;
+    let hadError=false, hadQuotaError=false;
     const jsonResults = await Promise.all(tasks.map(t=>
       cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(t.route.tdxCity)}&stop=${encodeURIComponent(t.fromTdxName)}`)
-        .catch(e=>{ console.error('TDX proxy error:', e); hadError=true; return null; })
+        .catch(e=>{ console.error('TDX proxy error:', e); if(e.quotaExceeded)hadQuotaError=true; else hadError=true; return null; })
     ));
 
     const results = [];
@@ -767,7 +804,8 @@ async function getBusTripsForRoute(fromId,toId,dowVal,afterMin){
         });
     });
     const sorted = results.sort((a,b)=>a.estSeconds-b.estSeconds);
-    if(hadError) sorted.push({ isError:true, errorMsg:'部分公車即時資料查詢失敗' });
+    if(hadQuotaError) sorted.push({ isError:true, errorMsg:(L.cur==='zh'?'目前查詢量過高，請稍後再次查詢':'Too many requests right now — please try again shortly') });
+    else if(hadError) sorted.push({ isError:true, errorMsg:(L.cur==='zh'?'部分公車即時資料查詢失敗':'Some bus real-time data unavailable') });
     return sorted;
   } catch(e) {
     console.error('getBusTripsForRoute error:', e);
@@ -806,8 +844,8 @@ async function renderSR(){
     schoolRes.push({kind:'school',r,trip,idx});
   }));
   const rawBusRes = await getBusTripsForStop(sel);
-  // 過濾掉錯誤標記，顯示公車暫時無法取得的提示
-  const busError = rawBusRes.some(x=>x.isError);
+  // 過濾掉錯誤標記，顯示公車暫時無法取得的提示（用實際的錯誤訊息，區分「查詢量過高」跟一般錯誤）
+  const busErrorItem = rawBusRes.find(x=>x.isError);
   const busRes = rawBusRes.filter(x=>!x.isError).map(x=>({kind:'bus',...x}));
   const all=[...schoolRes,...busRes].sort((a,b)=>{
     const ta=a.kind==='school'?toMin(a.trip.stops[a.idx].t):toMin(a.arrivalTime);
@@ -832,7 +870,7 @@ async function renderSR(){
   let html=`<p class="sec-lbl">${zh?'停靠':'STOPS AT'} ${slbl} — ${limited.length}${all.length>MAX?' / '+all.length:''} ${zh?'班':'TRIP(S)'}</p>`;
   html+=limited.map(item=>item.kind==='school'?buildSchoolCard(item.r,item.trip,null,null,sel):buildBusCard(item,sel,null,null)).join('');
   if(all.length>MAX)html+=`<p class="limit-note">${zh?`僅顯示最近 ${MAX} 班`:`Showing next ${MAX} trips only`}</p>`;
-  if(busError) html+=`<p class="limit-note" style="color:#ba7517;">⚠️ ${zh?'部分公車即時資訊暫時無法取得':'Some bus real-time data temporarily unavailable'}</p>`;
+  if(busErrorItem) html+=`<p class="limit-note" style="color:#ba7517;">⚠️ ${esc(busErrorItem.errorMsg)}</p>`;
   area.innerHTML=html;
   } catch(e) {
     console.error('renderSR 錯誤:', e);
@@ -925,7 +963,7 @@ async function doSearch(){
   // 公車只有「即時動態」資料，沒有固定時刻表——查未來日期時，即時公車資料跟那天完全無關，
   // 所以只有查詢日期是「今天」才去查公車即時資料，未來日期只顯示校車的固定班表。
   const rawBusSearch = isToday ? await getBusTripsForRoute(from,to,d,n) : [];
-  const busSearchError = rawBusSearch.some(x=>x.isError);
+  const busSearchErrorItem = rawBusSearch.find(x=>x.isError);
   const busRes = rawBusSearch.filter(x=>!x.isError).map(x=>({kind:'bus',...x}));
   const all=[...schoolRes,...busRes].sort((a,b)=>{
     const ta=a.kind==='school'?toMin(a.trip.stops[a.fi].t):toMin(a.depTime);
@@ -949,7 +987,7 @@ async function doSearch(){
   if(!isToday)html+=`<p class="limit-note">${zh?'市區公車僅提供當日即時動態，查詢未來日期僅顯示校車固定班表':'City bus real-time info is only available for today — future-date results show school shuttle schedule only'}</p>`;
   html+=limited.map(item=>item.kind==='school'?buildSchoolCard(item.r,item.trip,item.fi,item.ti,null,isToday):buildBusCard(item,null,item.fi,item.ti,isToday)).join('');
   if(all.length>MAX)html+=`<p class="limit-note">${zh?`僅顯示最近 ${MAX} 班`:`Showing next ${MAX} trips only`}</p>`;
-  if(busSearchError) html+=`<p class="limit-note" style="color:#ba7517;">⚠️ ${zh?'部分公車即時資訊暫時無法取得':'Some bus real-time data temporarily unavailable'}</p>`;
+  if(busSearchErrorItem) html+=`<p class="limit-note" style="color:#ba7517;">⚠️ ${esc(busSearchErrorItem.errorMsg)}</p>`;
   area.innerHTML=html;
   } catch(e) {
     console.error('doSearch 錯誤:', e);
@@ -1147,6 +1185,14 @@ async function init(){
   notifyHeight();
   const observer = new MutationObserver(notifyHeight);
   observer.observe(document.body, {childList:true, subtree:true});
+
+  // 手機鎖屏/切到背景太久，回來時畫面顯示的可能是舊的即時公車資料，切回頁面時重新查一次目前的結果
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState!=='visible' || !DATA_LOADED) return;
+    if(sel){ renderSR(); return; } // 簡易模式：目前有選站點就重查
+    const stdVisible = document.getElementById('mstd').style.display!=='none';
+    if(stdVisible && document.getElementById('stdr').innerHTML.trim()) doSearch(); // 標準模式：已有查詢結果就重查
+  });
 }
 init();
 </script>

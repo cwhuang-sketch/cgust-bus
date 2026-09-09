@@ -219,6 +219,9 @@ tr:hover td{background:#fafafa;}
     <!-- Main content -->
     <main id="main" class="content">
 
+      <!-- 全域提示：TDX 額度用盡時，不管在哪個頁面都看得到 -->
+      <div id="tdx-quota-banner" style="display:none;background:var(--dl);border:1.5px solid var(--danger);color:var(--danger);border-radius:var(--rs);padding:.75rem 1rem;margin-bottom:1rem;font-weight:600;font-size:.9rem;"></div>
+
       <!-- ── 校內班車 ── -->
       <div class="panel active" id="panel-school">
         <div class="card">
@@ -317,31 +320,65 @@ tr:hover td{background:#fafafa;}
           <div class="card-header"><span class="card-title">重要公告</span></div>
           <p class="hint" style="margin-bottom:.6rem;">顯示在前台車班查詢上方，以紅底加粗方式強調，讓使用者能快速注意到。可直接輸入 HTML 原始碼（例如加上連結、粗體、換行）。留空則前台不顯示此區塊。</p>
           <div class="fg">
+            <label>中文版</label>
             <textarea id="ss-announcement" rows="3" oninput="updateAnnouncementPreview()" placeholder="例如：因道路施工，8/10（一）起 S3 站暫停停靠，請改至 S4 站候車。" style="width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.85rem;font-family:monospace;resize:vertical;"></textarea>
           </div>
           <div class="fg">
+            <label>英文版 <span style="color:var(--gray);font-weight:400;">（選填，留空的話英文介面會自動顯示中文版內容）</span></label>
+            <textarea id="ss-announcement-en" rows="3" oninput="updateAnnouncementPreview()" placeholder="e.g. Due to road construction, Stop S3 will be closed from 8/10 (Mon)." style="width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.85rem;font-family:monospace;resize:vertical;"></textarea>
+          </div>
+          <div class="fg">
             <label>預覽（前台實際樣式）</label>
-            <div id="ss-announcement-preview-wrap" style="display:none;">
-              <div style="display:flex;gap:.65rem;align-items:flex-start;background:#FDEBEB;border:1.5px solid #C21F1F;border-left:5px solid #C21F1F;border-radius:var(--rs);padding:.9rem 1.1rem;color:#8F1616;font-size:.92rem;font-weight:600;line-height:1.65;">
-                <span aria-hidden="true" style="flex:none;font-size:1.25rem;">📢</span>
-                <span id="ss-announcement-preview"></span>
+            <div style="display:flex;gap:.75rem;">
+              <div style="flex:1;">
+                <p class="hint" style="margin-bottom:.3rem;">中文</p>
+                <div id="ss-announcement-preview-wrap" style="display:none;">
+                  <div style="display:flex;gap:.65rem;align-items:flex-start;background:#FDEBEB;border:1.5px solid #C21F1F;border-left:5px solid #C21F1F;border-radius:var(--rs);padding:.9rem 1.1rem;color:#8F1616;font-size:.92rem;font-weight:600;line-height:1.65;">
+                    <span aria-hidden="true" style="flex:none;font-size:1.25rem;">📢</span>
+                    <span id="ss-announcement-preview"></span>
+                  </div>
+                </div>
+                <div id="ss-announcement-empty-hint" style="padding:10px 12px;border:1.5px dashed var(--bd);border-radius:var(--rs);font-size:.85rem;color:var(--gray);">（沒有內容，前台不會顯示此區塊）</div>
+              </div>
+              <div style="flex:1;">
+                <p class="hint" style="margin-bottom:.3rem;">英文</p>
+                <div id="ss-announcement-en-preview-wrap" style="display:none;">
+                  <div style="display:flex;gap:.65rem;align-items:flex-start;background:#FDEBEB;border:1.5px solid #C21F1F;border-left:5px solid #C21F1F;border-radius:var(--rs);padding:.9rem 1.1rem;color:#8F1616;font-size:.92rem;font-weight:600;line-height:1.65;">
+                    <span aria-hidden="true" style="flex:none;font-size:1.25rem;">📢</span>
+                    <span id="ss-announcement-en-preview"></span>
+                  </div>
+                </div>
+                <div id="ss-announcement-en-empty-hint" style="padding:10px 12px;border:1.5px dashed var(--bd);border-radius:var(--rs);font-size:.85rem;color:var(--gray);">（沒有英文版，將顯示中文版內容）</div>
               </div>
             </div>
-            <div id="ss-announcement-empty-hint" style="padding:10px 12px;border:1.5px dashed var(--bd);border-radius:var(--rs);font-size:.85rem;color:var(--gray);">（沒有內容，前台不會顯示此區塊）</div>
           </div>
         </div>
         <div class="card" style="max-width:720px;">
           <div class="card-header"><span class="card-title">備註（HTML）</span></div>
           <p class="hint" style="margin-bottom:.6rem;">顯示在前台車班查詢最下方，可直接輸入 HTML 原始碼（例如加上連結、換行、簡單排版）。留空則前台不顯示此區塊。</p>
           <div class="fg">
+            <label>中文版</label>
             <textarea id="ss-footer-note" rows="6" oninput="updateFooterNotePreview()" placeholder="例如：&lt;p&gt;客服信箱：&lt;a href=&quot;mailto:bus@cgust.edu.tw&quot;&gt;bus@cgust.edu.tw&lt;/a&gt;&lt;/p&gt;" style="width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.85rem;font-family:monospace;resize:vertical;"></textarea>
           </div>
           <div class="fg">
+            <label>英文版 <span style="color:var(--gray);font-weight:400;">（選填，留空的話英文介面會自動顯示中文版內容）</span></label>
+            <textarea id="ss-footer-note-en" rows="6" oninput="updateFooterNotePreview()" placeholder="e.g. &lt;p&gt;Contact: &lt;a href=&quot;mailto:bus@cgust.edu.tw&quot;&gt;bus@cgust.edu.tw&lt;/a&gt;&lt;/p&gt;" style="width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:var(--rs);font-size:.85rem;font-family:monospace;resize:vertical;"></textarea>
+          </div>
+          <div class="fg">
             <label>預覽</label>
-            <div id="ss-footer-note-preview" style="padding:10px 12px;border:1.5px dashed var(--bd);border-radius:var(--rs);font-size:.85rem;min-height:2.5rem;color:var(--ink);"></div>
+            <div style="display:flex;gap:.75rem;">
+              <div style="flex:1;">
+                <p class="hint" style="margin-bottom:.3rem;">中文</p>
+                <div id="ss-footer-note-preview" style="padding:10px 12px;border:1.5px dashed var(--bd);border-radius:var(--rs);font-size:.85rem;min-height:2.5rem;color:var(--ink);"></div>
+              </div>
+              <div style="flex:1;">
+                <p class="hint" style="margin-bottom:.3rem;">英文</p>
+                <div id="ss-footer-note-en-preview" style="padding:10px 12px;border:1.5px dashed var(--bd);border-radius:var(--rs);font-size:.85rem;min-height:2.5rem;color:var(--ink);"></div>
+              </div>
+            </div>
           </div>
         </div>
-        <p class="hint" style="max-width:720px;margin-bottom:.6rem;">以上兩個欄位只有 admin 能編輯，且會直接以 HTML 顯示在公開頁面，請勿貼上不信任的原始碼。</p>
+        <p class="hint" style="max-width:720px;margin-bottom:.6rem;">以上欄位只有 admin 能編輯，且會直接以 HTML 顯示在公開頁面，請勿貼上不信任的原始碼。</p>
         <div style="max-width:720px;display:flex;align-items:center;gap:.75rem;">
           <button class="btn btn-primary" onclick="saveSiteSettings()">儲存設定</button>
           <span id="ss-msg" style="font-size:.85rem;color:var(--gray);"></span>
@@ -366,6 +403,30 @@ tr:hover td{background:#fafafa;}
               <li>Redeploy 後生效</li>
             </ol>
           </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><span class="card-title">雙 TDX 帳號自動切換</span></div>
+          <p class="hint" style="margin-bottom:.75rem;">
+            系統支援設定兩組 TDX 帳密，第一組（<code>TDX_CLIENT_ID</code> / <code>TDX_CLIENT_SECRET</code>）額滿時會自動切換到第二組
+            （<code>TDX_CLIENT_ID_2</code> / <code>TDX_CLIENT_SECRET_2</code>）。第二組是選填的：沒有設定的話，系統只會用第一組，行為跟原本一樣。
+            兩組都額滿時，前台會顯示「查詢量過高，請稍後再試」的提示，不會出現錯誤畫面。
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">TDX 額度用盡記錄</span>
+            <div style="display:flex;gap:.5rem;">
+              <button class="btn btn-outline btn-sm" onclick="loadQuotaEvents()">🔄 重新整理</button>
+              <button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" onclick="clearAllQuotaEvents()">清除全部記錄</button>
+            </div>
+          </div>
+          <p class="hint" style="margin-bottom:.75rem;">記錄每一次帳號額滿、自動切換或兩組都用盡的事件，方便日後查詢用量狀況。</p>
+          <table>
+            <thead><tr><th>時間</th><th>帳號</th><th>查詢類型</th><th>操作</th></tr></thead>
+            <tbody id="quota-events-tbody"><tr><td colspan="4" style="text-align:center;color:var(--gray);padding:1rem;">載入中…</td></tr></tbody>
+          </table>
         </div>
       </div>
 
@@ -907,6 +968,7 @@ async function loadAll(){
     await loadAccounts();
     await loadSiteSettings();
     await loadCalendarDates();
+    await loadQuotaEvents();
   }
   checkTDXStatus();
 }
@@ -1601,7 +1663,7 @@ async function openEditTrip(tripId){
     return `<div style="display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;margin-bottom:.4rem;">
       <div style="padding:.35rem .6rem;background:var(--grl);border-radius:6px;font-size:.85rem;font-weight:500;">
         ${i===0?'🚩 ':''}${esc(s.name_zh)}
-        <span style="font-size:.72rem;color:var(--gray);margin-left:.3rem;">${s.name_en}</span>
+        <span style="font-size:.72rem;color:var(--gray);margin-left:.3rem;">${esc(s.name_en)}</span>
       </div>
       <div style="display:flex;align-items:center;gap:.3rem;">
         <input type="time" value="${currentTime}"
@@ -2321,7 +2383,9 @@ async function loadSiteSettings(){
     const res = await api('GET','/api/schedule-admin?resource=site_settings');
     const row = (res.data||[])[0] || {};
     document.getElementById('ss-announcement').value = row.announcement || '';
+    document.getElementById('ss-announcement-en').value = row.announcement_en || '';
     document.getElementById('ss-footer-note').value = row.footer_note || '';
+    document.getElementById('ss-footer-note-en').value = row.footer_note_en || '';
     updateAnnouncementPreview();
     updateFooterNotePreview();
   } catch(e){
@@ -2334,12 +2398,21 @@ function updateAnnouncementPreview(){
   document.getElementById('ss-announcement-preview').innerHTML = val;
   document.getElementById('ss-announcement-preview-wrap').style.display = val ? '' : 'none';
   document.getElementById('ss-announcement-empty-hint').style.display = val ? 'none' : '';
+
+  const valEn = document.getElementById('ss-announcement-en').value.trim();
+  document.getElementById('ss-announcement-en-preview').innerHTML = valEn;
+  document.getElementById('ss-announcement-en-preview-wrap').style.display = valEn ? '' : 'none';
+  document.getElementById('ss-announcement-en-empty-hint').style.display = valEn ? 'none' : '';
 }
 
 function updateFooterNotePreview(){
   const val = document.getElementById('ss-footer-note').value;
   document.getElementById('ss-footer-note-preview').innerHTML = val
     || '<span style="color:var(--gray);">（沒有內容，前台不會顯示此區塊）</span>';
+
+  const valEn = document.getElementById('ss-footer-note-en').value;
+  document.getElementById('ss-footer-note-en-preview').innerHTML = valEn
+    || '<span style="color:var(--gray);">（沒有英文版，將顯示中文版內容）</span>';
 }
 
 async function saveSiteSettings(){
@@ -2349,7 +2422,9 @@ async function saveSiteSettings(){
   try {
     await api('PUT','/api/schedule-admin?resource=site_settings&id=1',{
       announcement: document.getElementById('ss-announcement').value,
-      footer_note: document.getElementById('ss-footer-note').value
+      announcement_en: document.getElementById('ss-announcement-en').value,
+      footer_note: document.getElementById('ss-footer-note').value,
+      footer_note_en: document.getElementById('ss-footer-note-en').value
     });
     msg.style.color = 'var(--green)';
     msg.textContent = '已儲存 ✓';
@@ -2424,6 +2499,51 @@ async function deleteCalendarDate(date){
   } catch(e){ alert(e.message); }
 }
 
+// ── TDX 額度用盡記錄（僅 admin）─────────────────────────────────
+const QUOTA_ACCOUNT_LABEL = { primary:'第一組', secondary:'第二組' };
+const QUOTA_ENDPOINT_LABEL = { 'tdx-bus':'即時到站查詢', 'tdx-stops':'站牌名稱查詢（後台）', 'tdx-route-directions':'路線方向查詢（後台）' };
+
+async function loadQuotaEvents(){
+  const tbody=document.getElementById('quota-events-tbody');
+  if(!tbody) return;
+  try {
+    const res=await api('GET','/api/schedule-admin?resource=tdx_quota_events');
+    const events=res.data||[];
+    if(!events.length){
+      tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--gray);padding:1rem;">目前沒有額度用盡的記錄</td></tr>';
+      return;
+    }
+    tbody.innerHTML=events.map(e=>{
+      const time=new Date(e.created_at).toLocaleString('zh-TW',{hour12:false});
+      return `<tr>
+        <td style="font-size:.85rem;">${esc(time)}</td>
+        <td>${QUOTA_ACCOUNT_LABEL[e.account]||esc(e.account)}</td>
+        <td style="font-size:.85rem;">${QUOTA_ENDPOINT_LABEL[e.endpoint]||esc(e.endpoint)}</td>
+        <td class="actions"><button class="btn btn-sm" style="background:var(--dl);color:var(--danger);" onclick="deleteQuotaEvent('${esc(e.id)}')">刪除</button></td>
+      </tr>`;
+    }).join('');
+  } catch(e){
+    tbody.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--danger);padding:1rem;">載入失敗：${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function deleteQuotaEvent(id){
+  try {
+    await api('DELETE',`/api/schedule-admin?resource=tdx_quota_events&id=${id}`);
+    await loadQuotaEvents();
+  } catch(e){ alert(e.message); }
+}
+
+async function clearAllQuotaEvents(){
+  if(!confirm('確定清除全部 TDX 額度用盡記錄？此操作無法復原。')) return;
+  try {
+    const res=await api('GET','/api/schedule-admin?resource=tdx_quota_events');
+    const events=res.data||[];
+    await Promise.all(events.map(e=>api('DELETE',`/api/schedule-admin?resource=tdx_quota_events&id=${e.id}`)));
+    await loadQuotaEvents();
+  } catch(e){ alert('清除失敗：'+e.message); }
+}
+
 function openResetPw(id,username){
   resetTargetId=id;
   document.getElementById('acc-target-id').value=id;
@@ -2483,12 +2603,27 @@ async function changePw(){
 // ── TDX Status ────────────────────────────────────────────────
 async function checkTDXStatus(){
   const el=document.getElementById('tdx-status');
-  if(!el) return;
+  const banner=document.getElementById('tdx-quota-banner');
   try {
     const r=await fetch('/api/tdx-bus?city=NewTaipei&stop=長庚大學');
-    if(r.ok){ el.textContent='✅ TDX API 連線正常';el.style.color='var(--green)'; }
-    else { el.textContent=`⚠️ TDX API 回應異常 (${r.status})`;el.style.color='var(--danger)'; }
-  } catch(e){ el.textContent='❌ 無法連線至 TDX API';el.style.color='var(--danger)'; }
+    if(r.ok){
+      if(el){ el.textContent='✅ TDX API 連線正常';el.style.color='var(--green)'; }
+      if(banner) banner.style.display='none';
+    }
+    else if(r.status===429){
+      const data=await r.json().catch(()=>({}));
+      const msg=data.message||'TDX 查詢量已達上限，請稍後再確認';
+      if(el){ el.textContent='🔴 '+msg; el.style.color='var(--danger)'; el.style.fontWeight='700'; }
+      if(banner){ banner.textContent='🔴 '+msg+'（前台的即時公車查詢目前可能會顯示查詢失敗）'; banner.style.display=''; }
+    }
+    else {
+      if(el){ el.textContent=`⚠️ TDX API 回應異常 (${r.status})`;el.style.color='var(--danger)'; }
+      if(banner) banner.style.display='none';
+    }
+  } catch(e){
+    if(el){ el.textContent='❌ 無法連線至 TDX API';el.style.color='var(--danger)'; }
+    if(banner) banner.style.display='none';
+  }
 }
 
 // ── Modal helpers ─────────────────────────────────────────────
