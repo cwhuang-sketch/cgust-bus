@@ -24,6 +24,18 @@
       "headers": [
         { "key": "Cache-Control", "value": "no-store" }
       ]
+    },
+    {
+      "source": "/api/schedule",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=30, stale-while-revalidate=60" }
+      ]
+    },
+    {
+      "source": "/api/tdx-bus",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=15, stale-while-revalidate=30" }
+      ]
     }
   ]
 }
