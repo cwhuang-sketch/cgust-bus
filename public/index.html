@@ -577,8 +577,13 @@ async function loadSchedule(){
 }
 
 // 重要公告與備註：皆由後台 admin 帳號以 HTML 編輯（如同一般 CMS 後台內容），信任其內容
+// 支援中英文切換：英文版沒填的話，退回顯示中文版，避免英文介面下整區直接消失
+let SITE_SETTINGS = {};
 function renderSiteSettings(settings){
-  const announcement = (settings.announcement||'').trim();
+  if(settings) SITE_SETTINGS = settings; // 記住最新設定，切換語言時可以重新渲染
+  const zh = L.cur==='zh';
+
+  const announcement = (zh ? SITE_SETTINGS.announcement : (SITE_SETTINGS.announcement_en||SITE_SETTINGS.announcement))?.trim()||'';
   const abEl = document.getElementById('announcement-banner');
   if(announcement){
     document.getElementById('announcement-text').innerHTML = announcement;
@@ -587,7 +592,7 @@ function renderSiteSettings(settings){
     abEl.style.display = 'none';
   }
 
-  const footerNote = (settings.footer_note||'').trim();
+  const footerNote = (zh ? SITE_SETTINGS.footer_note : (SITE_SETTINGS.footer_note_en||SITE_SETTINGS.footer_note))?.trim()||'';
   const fnEl = document.getElementById('footer-note-area');
   if(footerNote){
     document.getElementById('footer-note-content').innerHTML = footerNote;
@@ -690,35 +695,29 @@ function busInfoUrl(routeNo, url){
   return `https://www.taiwanbus.tw/eBUS/index.html#search?routeNo=${encodeURIComponent(routeNo)}`;
 }
 
-function getStopMap(){
-  const map = {};
-  BUS_ROUTES.forEach(route => {
-    (route.directions||[]).forEach(dir => {
-      (dir.stops||[]).forEach(stop => {
-        // stop 格式：{ id: 'S2', tdx_stop_name: '體育大學' }
-        if(stop.tdx_stop_name && stop.id){
-          map[stop.tdx_stop_name] = stop.id;
-        }
-      });
-    });
-  });
-  return map;
-}
-
 async function getBusTripsForStop(sid){
   try {
     if(!TDX_CONFIG.ENABLED || !DATA_LOADED) return [];
-    const STOP_MAP = getStopMap();
-    const tdxName = Object.entries(STOP_MAP).find(([k,v])=>v===sid)?.[0];
-    if(!tdxName) return []; // 此站無公車路線
     const relevantRoutes = BUS_ROUTES.filter(r=>r.directions.some(d=>d.stops.some(s=>s.id===sid)));
-    if(!relevantRoutes.length) return [];
+    if(!relevantRoutes.length) return []; // 此站無公車路線
 
-    // 同一站可能跨兩個縣市（例如候車亭有桃園和新北的公車）→ 平行查詢，不要一個一個等
-    const cities = [...new Set(relevantRoutes.map(r=>r.tdxCity))];
+    // 收集「這個站點」在各路線裡實際用到的 (縣市, TDX 站牌名稱) 組合。
+    // 不同路線就算是同一個校內站點，TDX 站牌名稱也不一定完全相同（哪怕只差一個字），
+    // 用單一個猜測出來的名稱去查所有縣市會漏資料，這裡改成每個組合各自查自己真正對應的名稱。
+    const queries = new Map(); // key: "縣市||站牌名稱"
+    relevantRoutes.forEach(route=>{
+      route.directions.forEach(dir=>{
+        const stop = dir.stops.find(s=>s.id===sid);
+        if(stop && stop.tdx_stop_name){
+          queries.set(`${route.tdxCity}||${stop.tdx_stop_name}`, { city: route.tdxCity, tdxName: stop.tdx_stop_name });
+        }
+      });
+    });
+    if(!queries.size) return [];
+
     let hadError=false, hadQuotaError=false;
-    const jsonList = await Promise.all(cities.map(city=>
-      cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(city)}&stop=${encodeURIComponent(tdxName)}`)
+    const jsonList = await Promise.all([...queries.values()].map(q=>
+      cachedFetch(`/api/tdx-bus?city=${encodeURIComponent(q.city)}&stop=${encodeURIComponent(q.tdxName)}`)
         .catch(e=>{console.error('TDX proxy error:',e);if(e.quotaExceeded)hadQuotaError=true;else hadError=true;return null;})
     ));
     const allArrivals = [];
@@ -739,7 +738,9 @@ async function getBusTripsForStop(sid){
       if(!dir) return;
       const stopIdx = dir.stops.findIndex(s=>s.id===sid);
       if(stopIdx===-1) return;
-      if(stopIdx===dir.stops.length-1) return; // 選到的站是這個方向的最後一站（末站），不可能上車，跳過
+      // 注意：公車路線登記的校內站點只是整條路線裡跟校內有關的一小段，不是路線真正的起訖點
+      // （公車實際上可能還會繼續開往校外很多站，甚至是環狀巡迴），所以這裡不能比照校車、
+      // 用「是不是我們登記清單裡的最後一站」來判斷能不能上車——那只代表我們懶得再往下登記，不代表真的到站。
       const parsed = parseTDXArrival(a);
       if(!parsed) return;
       results.push({
@@ -1098,7 +1099,7 @@ function toggleLang(){
   const zh=L.cur==='zh';
   document.getElementById('lb').textContent=zh?'EN':'中文';
   document.documentElement.lang=zh?'zh-TW':'en';
-  updateUI();renderChips();populateSel();
+  updateUI();renderChips();populateSel();renderSiteSettings();
   if(sel) renderSR(); // 簡易模式：重新渲染結果
   // 標準模式：語言切換後清空結果，避免中英混雜
   const stdr=document.getElementById('stdr');
